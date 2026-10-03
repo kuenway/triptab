@@ -21,7 +21,7 @@ docker compose up -d db
 cd backend
 uv sync --python 3.11
 uv run --env-file ../.env alembic upgrade head
-uv run uvicorn app.main:app --reload --port 8000
+uv run --env-file ../.env uvicorn app.main:app --reload --port 8000
 ```
 
 In another terminal, from the repository root:
