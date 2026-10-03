@@ -11,6 +11,14 @@ async function register(page: Page, name: string) {
   await page.getByLabel("Password", { exact: true }).fill("TripTab test password 123");
   await page.getByRole("button", { name: "Register", exact: true }).click();
   await expect(page.getByLabel("Trip name")).toBeVisible();
+  // Exercise the real production-build rewrite with an authenticated cookie.
+  for (const path of ["/api/v1/auth/me", "/api/v1/groups"]) {
+    const api = await page.request.get(path);
+    expect(api.status()).toBe(200);
+    expect(api.headers()["cache-control"]).toBe("no-store");
+    expect(api.headers()["cdn-cache-control"]).toBe("no-store");
+    if (path.endsWith("/me")) expect((await api.json()).user.email).toBe(email);
+  }
   return email;
 }
 

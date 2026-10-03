@@ -33,4 +33,10 @@ it("keeps API requests same-origin and supplies compatible browser headers", asy
   expect(headers["Referrer-Policy"]).toBe("no-referrer");
   expect(headers["Content-Security-Policy"]).toContain("frame-ancestors 'none'");
   expect(headers["Content-Security-Policy"]).not.toContain("unsafe-inline");
+  const api = rules!.find(({ source }) => source === "/api/:path*")!;
+  const apiHeaders = Object.fromEntries(api.headers.map(({ key, value }) => [key, value]));
+  for (const key of ["Cache-Control", "CDN-Cache-Control", "Vercel-CDN-Cache-Control"]) {
+    expect(apiHeaders[key]).toBe("no-store");
+  }
+  expect(apiHeaders["x-vercel-enable-rewrite-caching"]).toBe("0");
 });

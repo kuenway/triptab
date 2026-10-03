@@ -113,6 +113,8 @@ class OperationsMiddleware:
                     "/ready",
                 }:
                     headers["Cache-Control"] = "no-store"
+                    headers["CDN-Cache-Control"] = "no-store"
+                    headers["Vercel-CDN-Cache-Control"] = "no-store"
                     headers["Content-Security-Policy"] = (
                         "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
                     )

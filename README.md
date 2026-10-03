@@ -124,7 +124,8 @@ To run the same flows against the production frontend, build with
 
 For production configuration, startup, readiness, request logs, rate limits,
 backup/restore and the pre-deployment gate, see [TripTab operations](docs/operations.md).
-No hosting provider is configured or deployed yet.
+For the Vercel frontend, Render backend, and paid Render PostgreSQL deployment
+configuration and release checklist, see [production deployment](docs/deployment.md).
 
 
 Financial mistakes can be corrected from expense and payment history. Correct

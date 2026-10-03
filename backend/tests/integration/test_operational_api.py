@@ -1,7 +1,7 @@
 """Operational boundaries exercised with real PostgreSQL and auth sessions."""
 
 from datetime import timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select
@@ -16,6 +16,92 @@ ACCOUNT = {
     "password": "Operational test password 123",
     "display_name": "Alice",
 }
+
+
+def test_private_api_success_and_error_responses_are_never_cached(raw_client):
+    def request(method, path, status=200, **kwargs):
+        response = raw_client.request(method, "/api/v1" + path, **kwargs)
+        assert response.status_code == status, response.text
+        for header in (
+            "Cache-Control",
+            "CDN-Cache-Control",
+            "Vercel-CDN-Cache-Control",
+        ):
+            assert response.headers[header] == "no-store"
+        return response.json() if response.content else None
+
+    request("GET", "/auth/me", 401)
+    auth = request("POST", "/auth/register", 201, json=ACCOUNT)
+    raw_client.headers["X-CSRF-Token"] = auth["csrf_token"]
+    request("GET", "/auth/me")
+    gid = request("POST", "/groups", 201, json={"name": "Cache check"})["id"]
+    path = f"/groups/{gid}"
+    owner = request("GET", path + "/members")[0]["id"]
+    guest = request("POST", path + "/members", 201, json={"display_name": "Bob"})["id"]
+    payload = {
+        "description": "Synthetic dinner",
+        "amount": 900,
+        "payer_member_id": owner,
+        "split_strategy": "equal",
+        "participant_member_ids": [owner, guest],
+        "occurred_at": "2026-10-03T12:00:00+08:00",
+    }
+    expense = request("POST", path + "/expenses", 201, json=payload)
+    request(
+        "POST",
+        path + f"/expenses/{expense['id']}/corrections",
+        201,
+        json={"reason": "Receipt correction", "replacement": payload | {"amount": 990}},
+    )
+    request(
+        "POST",
+        path + f"/expenses/{expense['id']}/void",
+        409,
+        json={"reason": "Already corrected"},
+    )
+    payment = {
+        "from_member_id": guest,
+        "to_member_id": owner,
+        "amount": 100,
+        "occurred_at": payload["occurred_at"],
+    }
+    settled = request("POST", path + "/settlements", 201, json=payment)
+    replacement = request(
+        "POST",
+        path + f"/settlements/{settled['id']}/corrections",
+        201,
+        json={"reason": "Amount correction", "replacement": payment | {"amount": 90}},
+    )
+    request(
+        "POST",
+        path + f"/settlements/{replacement['id']}/void",
+        json={"reason": "Duplicate payment"},
+    )
+    for suffix in (
+        "",
+        "/members",
+        "/expenses",
+        "/balances",
+        "/settlement-suggestions",
+        "/settlements",
+    ):
+        request("GET", path + suffix)
+    request("GET", "/groups")
+    request("GET", f"/groups/{uuid4()}", 404)
+    request("POST", "/groups", 422, json={"name": ""})
+    request(
+        "POST",
+        "/groups",
+        403,
+        json={"name": "Denied"},
+        headers={"X-CSRF-Token": "invalid"},
+    )
+    request("POST", "/auth/logout", 204)
+    request(
+        "POST",
+        "/auth/login",
+        json={"email": ACCOUNT["email"], "password": ACCOUNT["password"]},
+    )
 
 
 def test_readiness_uses_real_postgresql(raw_client, pg_engine, monkeypatch):

@@ -1,9 +1,9 @@
 # TripTab operations
 
 M10 prepares a single-instance application; it does not deploy one. Local Compose
-remains PostgreSQL development infrastructure. Application Dockerfiles are deferred
-until a hosting target is chosen: locked uv installs and Next.js builds already
-provide portable artifacts without a second deployment configuration.
+remains PostgreSQL development infrastructure. Production uses native Vercel and
+Render builds; application Dockerfiles are unnecessary. See
+[deployment configuration and release checklist](deployment.md).
 
 ## Configuration
 
@@ -15,7 +15,7 @@ for development. Never print configuration secrets.
 | Variable | Default / requirement |
 | --- | --- |
 | `TRIPTAB_ENV` | `development`, `test`, or `production`; explicitly set production |
-| `DATABASE_URL` | `postgresql+psycopg://...`; required for DB operations and production |
+| `DATABASE_URL` | `postgresql+psycopg://...` or provider `postgresql://...`; required for DB operations and production |
 | `TRIPTAB_ALLOWED_ORIGINS` | Comma-separated exact browser origins; absent denies mutations; production requires HTTPS |
 | `TRIPTAB_COOKIE_NAME` | `triptab_session`; changing it invalidates browser cookies |
 | `TRIPTAB_COOKIE_SECURE` | `true`; development/test HTTP can explicitly use `false` |
@@ -36,6 +36,9 @@ public API documentation. There is no auth bypass setting.
 Root `.env.example` contains public local-only credentials. Never reuse them in
 production. Use dedicated database roles, generated credentials, least privilege,
 and validated PostgreSQL TLS (prefer `sslmode=verify-full` with the correct CA).
+Render's private URL uses self-signed TLS, so its deployment uses `PGSSLMODE=require`
+on the private same-region network; `verify-full` is unsupported there. See the
+[provider connection guidance](https://render.com/docs/postgresql-creating-connecting).
 Credential files should be mode 0600 and outside Git. Roles/TLS are provisioned
 separately; the application does not configure them.
 
@@ -176,7 +179,7 @@ validates mechanics, not a configured production backup schedule or recovery SLA
 - Verify health/readiness, safe request logs and resource/concurrency settings.
 - Validate a restore and compare history; document who performs recovery.
 
-Hosting, application containers, distributed limiting, cleanup workers, monitoring
+Application containers, distributed limiting, cleanup workers, monitoring
 SaaS, strict-script CSP, reset/verification/OAuth, invitations, idempotency, ledger
 versions and multi-currency remain deferred. Reassess dependency advisories at
 deployment; a vulnerability scan is not a security guarantee.

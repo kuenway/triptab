@@ -52,6 +52,14 @@ class Settings(BaseModel):
         default=60, ge=1, le=3600, alias="TRIPTAB_AUTH_RATE_WINDOW"
     )
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def provider_database_url(cls, value: object) -> object:
+        # Render supplies the standard scheme; retain our installed psycopg driver.
+        if isinstance(value, str) and value.startswith("postgresql://"):
+            return "postgresql+psycopg://" + value.removeprefix("postgresql://")
+        return value
+
     @field_validator("allowed_origins", mode="before")
     @classmethod
     def origins(cls, value: object) -> tuple[str, ...]:

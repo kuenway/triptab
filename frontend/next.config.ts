@@ -25,6 +25,11 @@ const nextConfig: NextConfig = {
       { key: "X-Frame-Options", value: "DENY" },
       // Targeted CSP preserves Next.js hydration without adding inline-script exceptions.
       { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'" },
+    ] }, { source: "/api/:path*", headers: [
+      { key: "Cache-Control", value: "no-store" },
+      { key: "CDN-Cache-Control", value: "no-store" },
+      { key: "Vercel-CDN-Cache-Control", value: "no-store" },
+      { key: "x-vercel-enable-rewrite-caching", value: "0" },
     ] }];
   },
   async rewrites() {

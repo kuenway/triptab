@@ -73,11 +73,22 @@ def test_valid_production_configuration_and_safe_repr():
 
 
 def test_invalid_environment_errors_never_include_credentials(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "postgresql://secret:do-not-log-this@db/triptab")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql+psycopg2://secret:do-not-log-this@db/triptab"
+    )
     with pytest.raises(RuntimeError) as error:
         Settings.from_environment()
     assert "do-not-log-this" not in str(error.value)
     assert "postgresql://" not in str(error.value)
+
+
+def test_render_url_keeps_credentials_encoding_and_tls_options():
+    url = "postgresql://triptab:synthetic%40credential@db/triptab?sslmode=require"
+    settings = Settings.model_validate(PRODUCTION | {"database_url": url})
+    assert settings.database_url.get_secret_value() == url.replace(
+        "postgresql://", "postgresql+psycopg://", 1
+    )
+    assert "synthetic" not in repr(settings)
 
 
 def test_production_app_validates_before_serving_and_disables_debug_docs(monkeypatch):
@@ -107,6 +118,8 @@ def test_request_ids_and_security_headers(incoming):
     assert response.headers["X-Frame-Options"] == "DENY"
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
     assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["CDN-Cache-Control"] == "no-store"
+    assert response.headers["Vercel-CDN-Cache-Control"] == "no-store"
 
 
 def test_readiness_database_failure_does_not_break_liveness(monkeypatch):
