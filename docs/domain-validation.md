@@ -1,17 +1,16 @@
 # Domain validation boundary
 
 The Python objects in `backend/app/domain/` validate facts available within one
-object. Services introduced in later milestones will validate facts that require
-other group members, other records, or the full ledger. The objects do not query a
-database.
+object. Pure functions in `backend/app/accounting/` validate supplied group context
+and financial history. Neither layer queries a database.
 
-| Entity-local checks (Milestone 1) | Contextual or accounting checks (later) |
+| Entity-local checks | Contextual or accounting checks |
 | --- | --- |
 | IDs have UUID shape and required text is nonblank | A referenced user, group, or member actually exists |
-| Group currency is TWD with scale 0 | Members and transactions belong to the same group |
+| Group currency is TWD with scale 0 | Supplied members and transactions belong to the same group |
 | Expense amount is a positive integer NTD value | An expense has at least one valid participant |
 | Split amount is a nonnegative integer NTD value | Split member IDs are unique and allocations total the expense amount |
-| Expense strategy is Equal or Exact | Exact inputs total the requested amount; Equal allocations use the approved rounding rule |
+| Expense strategy is Equal or Exact | Exact splits total the expense; Equal splits use the stable member-ID remainder rule |
 | Settlement amount is positive and sender differs from recipient | Settlement members belong to the group; balances reflect the transfer |
 | `occurred_at` and `created_at` are timezone-aware | The application sets trustworthy `created_at` and actor values |
 
@@ -21,6 +20,8 @@ may be absent from the splits. `occurred_at` describes the real-world event, whi
 `created_at` records when the application entered it. Neither object generates a
 timestamp or requires those two times to be equal.
 
-There is no stored balance on `User` or `GroupMember`. The accounting milestone
-will derive balances from valid financial history. Financial corrections will use
+There is no stored balance on `User` or `GroupMember`. The accounting layer derives
+balances from valid, explicitly supplied history and includes every supplied group
+member, even if their balance is zero. A later application layer must supply all
+relevant historical members and trusted records. Financial corrections will use
 void and replacement records in a later milestone.
