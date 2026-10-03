@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import Home from "../app/page";
-import { BalanceList, ExpenseForm, ExpenseHistory, TravelerForm, TripDashboard } from "../components/trip-dashboard";
-import { api, ApiError, Expense, Traveler, Trip } from "../lib/api";
+import { BalanceList, ExpenseForm, ExpenseHistory, SuggestedPayments, TravelerForm, TripDashboard } from "../components/trip-dashboard";
+import { api, ApiError, Expense, SettlementSuggestions, Traveler, Trip } from "../lib/api";
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -32,6 +32,7 @@ const expense: Expense = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(api.getSettlementSuggestions).mockResolvedValue({ group_id: trip.id, currency: "TWD", suggestions: [] });
 });
 
 it("renders trips from the API", async () => {
@@ -137,4 +138,71 @@ it("shows a missing trip without exposing an API exception", async () => {
   vi.mocked(api.getBalances).mockResolvedValue({ group_id: trip.id, currency: "TWD", balances: [] });
   render(<TripDashboard tripId="unknown" />);
   expect(await screen.findByText("We couldn’t find that trip.")).toBeTruthy();
+});
+
+const suggestions: SettlementSuggestions = {
+  group_id: trip.id,
+  currency: "TWD",
+  suggestions: [
+    { from_member_id: "bob", from_display_name: "Bob", to_member_id: "alice", to_display_name: "Alice", amount: 1234 },
+    { from_member_id: "charlie", from_display_name: "Charlie", to_member_id: "alice", to_display_name: "Alice", amount: 300 },
+  ],
+};
+
+it.each([1, 2])("renders %i suggested payments with names and whole TWD amounts", (count) => {
+  render(<SuggestedPayments suggestions={{ ...suggestions, suggestions: suggestions.suggestions.slice(0, count) }} />);
+  expect(screen.getByText("Bob → Alice")).toBeTruthy();
+  expect(screen.getByText("NT$1,234")).toBeTruthy();
+  if (count === 2) {
+    expect(screen.getByText("Charlie → Alice")).toBeTruthy();
+    expect(screen.getByText("NT$300")).toBeTruthy();
+  }
+  expect(screen.queryByRole("button")).toBeNull();
+  expect(screen.queryByRole("checkbox")).toBeNull();
+});
+
+it("shows the settled suggestion empty state", () => {
+  render(<SuggestedPayments suggestions={{ ...suggestions, suggestions: [] }} />);
+  expect(screen.getByText("Everyone is settled up.")).toBeTruthy();
+});
+
+function mockDashboard() {
+  vi.mocked(api.getTrip).mockResolvedValue(trip);
+  vi.mocked(api.listTravelers).mockResolvedValue(travelers);
+  vi.mocked(api.listExpenses).mockResolvedValue([expense]);
+  vi.mocked(api.getBalances).mockResolvedValue({ group_id: trip.id, currency: "TWD", balances: [] });
+}
+
+it("loads backend suggestions into the trip without payment confirmation controls", async () => {
+  mockDashboard();
+  vi.mocked(api.getSettlementSuggestions).mockResolvedValue(suggestions);
+  render(<TripDashboard tripId={trip.id} />);
+  expect(await screen.findByText("Bob → Alice")).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Suggested payments" })).toBeTruthy();
+  expect(screen.getByText("These suggestions do not record payments.")).toBeTruthy();
+  expect(api.getSettlementSuggestions).toHaveBeenCalledWith(trip.id);
+  expect(screen.queryByRole("button", { name: /mark paid|confirm payment|settle/i })).toBeNull();
+});
+
+it("shows suggestion API errors without claiming everyone is settled", async () => {
+  mockDashboard();
+  vi.mocked(api.getSettlementSuggestions).mockRejectedValue(new ApiError("Could not load suggested payments.", 500));
+  render(<TripDashboard tripId={trip.id} />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not load suggested payments.");
+  expect(screen.getByRole("heading", { name: "Suggested payments" })).toBeTruthy();
+  expect(screen.queryByText("Everyone is settled up.")).toBeNull();
+});
+
+it("refreshes suggestions from the backend after an expense is saved", async () => {
+  mockDashboard();
+  vi.mocked(api.getSettlementSuggestions).mockResolvedValueOnce(suggestions).mockResolvedValueOnce({ ...suggestions, suggestions: [] });
+  vi.mocked(api.addExpense).mockResolvedValue(expense);
+  render(<TripDashboard tripId={trip.id} />);
+  expect(await screen.findByText("Bob → Alice")).toBeTruthy();
+  fillExpense();
+  fireEvent.click(screen.getByLabelText("Bob", { selector: "input[type=checkbox]" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add expense" }));
+  expect(await screen.findByText("Everyone is settled up.")).toBeTruthy();
+  expect(api.getSettlementSuggestions).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText("Bob → Alice")).toBeNull();
 });

@@ -5,8 +5,21 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.accounting import allocate_equal, calculate_balances, validate_exact_splits
-from app.domain import Expense, ExpenseSplit, Group, GroupMember, SplitStrategy, User
+from app.accounting import (
+    allocate_equal,
+    calculate_balances,
+    suggest_settlements,
+    validate_exact_splits,
+)
+from app.domain import (
+    Expense,
+    ExpenseSplit,
+    Group,
+    GroupMember,
+    SettlementSuggestion,
+    SplitStrategy,
+    User,
+)
 from app.persistence.repository import LedgerRepository
 
 # Milestone 4 has no authentication. This internal user satisfies the approved
@@ -128,3 +141,12 @@ class TripTabService:
             self.repo.list_settlements(group_id),
         )
         return group, tuple((member, balances[member.id]) for member in members)
+
+    def get_settlement_suggestions(
+        self, group_id: UUID
+    ) -> tuple[Group, tuple[GroupMember, ...], tuple[SettlementSuggestion, ...]]:
+        group, values = self.get_balances(group_id)
+        suggestions = suggest_settlements(
+            {member.id: amount for member, amount in values}
+        )
+        return group, tuple(member for member, _ in values), suggestions

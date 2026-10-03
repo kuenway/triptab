@@ -127,3 +127,17 @@ class BalancesResponse(BaseModel):
     group_id: UUID
     currency: Literal["TWD"]
     balances: list[MemberBalance]
+
+
+class SettlementSuggestionResponse(BaseModel):
+    from_member_id: UUID
+    from_display_name: str
+    to_member_id: UUID
+    to_display_name: str
+    amount: Annotated[StrictInt, Field(gt=0)]
+
+
+class SettlementSuggestionsResponse(BaseModel):
+    group_id: UUID
+    currency: Literal["TWD"]
+    suggestions: list[SettlementSuggestionResponse]

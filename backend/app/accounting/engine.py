@@ -1,6 +1,6 @@
 """Deterministic TWD accounting without I/O or mutable ledger state."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from uuid import UUID
 
 from app.domain import (
@@ -9,6 +9,7 @@ from app.domain import (
     Group,
     GroupMember,
     Settlement,
+    SettlementSuggestion,
     SplitStrategy,
 )
 
@@ -164,3 +165,39 @@ def calculate_balances(
     if sum(balances.values()) != 0:
         raise AccountingValidationError("group balances must total zero")
     return balances
+
+
+def suggest_settlements(
+    balances: Mapping[UUID, int],
+) -> tuple[SettlementSuggestion, ...]:
+    """Match largest debts and credits first, breaking ties by ascending UUID."""
+    if any(not isinstance(member_id, UUID) for member_id in balances):
+        raise AccountingValidationError("member IDs must be UUID values")
+    if any(type(amount) is not int for amount in balances.values()):
+        raise AccountingValidationError("balances must be integer NTD amounts")
+    if sum(balances.values()) != 0:
+        raise AccountingValidationError("balances must total zero")
+
+    debtors = sorted(
+        (member_id for member_id, amount in balances.items() if amount < 0),
+        key=lambda member_id: (balances[member_id], member_id),
+    )
+    creditors = sorted(
+        (member_id for member_id, amount in balances.items() if amount > 0),
+        key=lambda member_id: (-balances[member_id], member_id),
+    )
+    remaining = dict(balances)
+    suggestions: list[SettlementSuggestion] = []
+    debtor_index = creditor_index = 0
+    while debtor_index < len(debtors) and creditor_index < len(creditors):
+        sender = debtors[debtor_index]
+        recipient = creditors[creditor_index]
+        amount = min(-remaining[sender], remaining[recipient])
+        suggestions.append(SettlementSuggestion(sender, recipient, amount))
+        remaining[sender] += amount
+        remaining[recipient] -= amount
+        if remaining[sender] == 0:
+            debtor_index += 1
+        if remaining[recipient] == 0:
+            creditor_index += 1
+    return tuple(suggestions)

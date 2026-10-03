@@ -125,6 +125,22 @@ class Expense:
 
 
 @dataclass(frozen=True, slots=True)
+class SettlementSuggestion:
+    """A proposed transfer, without a payment identity or recorded event."""
+
+    from_member_id: UUID
+    to_member_id: UUID
+    amount: int
+
+    def __post_init__(self) -> None:
+        _require_uuid("from_member_id", self.from_member_id)
+        _require_uuid("to_member_id", self.to_member_id)
+        if self.from_member_id == self.to_member_id:
+            raise DomainValidationError("suggestion members must be different")
+        _require_amount("amount", self.amount)
+
+
+@dataclass(frozen=True, slots=True)
 class Settlement:
     id: UUID
     group_id: UUID

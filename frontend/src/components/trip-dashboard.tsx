@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
-import { api, ApiError, Balances, Expense, ExpenseInput, Traveler, Trip } from "../lib/api";
+import { api, ApiError, Balances, Expense, ExpenseInput, SettlementSuggestions, Traveler, Trip } from "../lib/api";
 
 const money = (amount: number) => `NT$${new Intl.NumberFormat("en-US").format(amount)}`;
 
@@ -48,6 +48,20 @@ export function BalanceList({ balances }: { balances: Balances }) {
           <span className={`balance-value ${balance.amount > 0 ? "positive" : balance.amount < 0 ? "negative" : "even"}`}>
             {balance.amount > 0 ? `gets back ${money(balance.amount)}` : balance.amount < 0 ? `owes ${money(-balance.amount)}` : "settled"}
           </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function SuggestedPayments({ suggestions }: { suggestions: SettlementSuggestions }) {
+  if (suggestions.suggestions.length === 0) return <p className="muted">Everyone is settled up.</p>;
+  return (
+    <div className="balance-list">
+      {suggestions.suggestions.map((suggestion) => (
+        <div className="balance-row" key={`${suggestion.from_member_id}-${suggestion.to_member_id}`}>
+          <span className="person-name">{suggestion.from_display_name} → {suggestion.to_display_name}</span>
+          <span className="balance-value">{money(suggestion.amount)}</span>
         </div>
       ))}
     </div>
@@ -191,19 +205,28 @@ export function TripDashboard({ tripId }: { tripId: string }) {
   const [travelers, setTravelers] = useState<Traveler[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [balances, setBalances] = useState<Balances | null>(null);
+  const [suggestions, setSuggestions] = useState<SettlementSuggestions | null>(null);
+  const [suggestionsError, setSuggestionsError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notFound, setNotFound] = useState(false);
 
   const load = useCallback(async () => {
+    setSuggestions(null);
+    setSuggestionsError("");
     try {
-      const [nextTrip, nextTravelers, nextExpenses, nextBalances] = await Promise.all([
+      const [nextTrip, nextTravelers, nextExpenses, nextBalances, nextSuggestions] = await Promise.all([
         api.getTrip(tripId), api.listTravelers(tripId), api.listExpenses(tripId), api.getBalances(tripId),
+        api.getSettlementSuggestions(tripId).catch((cause: Error) => {
+          setSuggestionsError(cause.message);
+          return null;
+        }),
       ]);
       setTrip(nextTrip);
       setTravelers(nextTravelers);
       setExpenses(nextExpenses);
       setBalances(nextBalances);
+      setSuggestions(nextSuggestions);
       setError("");
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 404) setNotFound(true);
@@ -231,6 +254,7 @@ export function TripDashboard({ tripId }: { tripId: string }) {
         </div>
         <div className="dashboard-side">
           <section className="panel" aria-labelledby="balances-heading"><div className="section-heading"><h2 id="balances-heading">Balances</h2></div><p className="muted section-caption">Who should receive and who owes.</p>{balances ? <BalanceList balances={balances} /> : <p className="muted">Loading balances…</p>}</section>
+          <section className="panel" aria-labelledby="suggested-payments-heading"><div className="section-heading"><h2 id="suggested-payments-heading">Suggested payments</h2></div><p className="muted section-caption">These suggestions do not record payments.</p>{suggestionsError ? <p className="alert" role="alert">{suggestionsError}</p> : suggestions ? <SuggestedPayments suggestions={suggestions} /> : <p className="muted" role="status">Loading suggested payments…</p>}</section>
           <section className="panel" aria-labelledby="travelers-heading"><div className="section-heading"><h2 id="travelers-heading">Travelers</h2><span className="count">{travelers.length}</span></div>{travelers.length === 0 ? <p className="muted">No travelers yet. Add the people sharing this trip.</p> : <div className="traveler-list">{travelers.map((traveler) => <div className="traveler-row" key={traveler.id}><span className="person-dot" aria-hidden="true">{traveler.display_name.charAt(0).toUpperCase()}</span>{traveler.display_name}</div>)}</div>}<TravelerForm tripId={tripId} onAdded={() => void load()} /></section>
         </div>
       </div>

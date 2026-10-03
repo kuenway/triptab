@@ -17,6 +17,8 @@ from app.api.schemas import (
     MemberBalance,
     MemberCreate,
     MemberResponse,
+    SettlementSuggestionResponse,
+    SettlementSuggestionsResponse,
 )
 from app.application.service import TripTabService
 from app.domain import ExpenseSplit, SplitStrategy
@@ -141,5 +143,31 @@ def get_balances(group_id: UUID, service: ServiceDependency) -> BalancesResponse
                 member_id=member.id, display_name=member.display_name, amount=amount
             )
             for member, amount in values
+        ],
+    )
+
+
+@router.get(
+    "/groups/{group_id}/settlement-suggestions",
+    response_model=SettlementSuggestionsResponse,
+    tags=["settlement-suggestions"],
+)
+def get_settlement_suggestions(
+    group_id: UUID, service: ServiceDependency
+) -> SettlementSuggestionsResponse:
+    group, members, suggestions = service.get_settlement_suggestions(group_id)
+    names = {member.id: member.display_name for member in members}
+    return SettlementSuggestionsResponse(
+        group_id=group.id,
+        currency=group.currency,
+        suggestions=[
+            SettlementSuggestionResponse(
+                from_member_id=suggestion.from_member_id,
+                from_display_name=names[suggestion.from_member_id],
+                to_member_id=suggestion.to_member_id,
+                to_display_name=names[suggestion.to_member_id],
+                amount=suggestion.amount,
+            )
+            for suggestion in suggestions
         ],
     )

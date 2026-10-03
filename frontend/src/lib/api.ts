@@ -32,6 +32,18 @@ export type Balances = {
   balances: { member_id: string; display_name: string; amount: number }[];
 };
 
+export type SettlementSuggestions = {
+  group_id: string;
+  currency: "TWD";
+  suggestions: {
+    from_member_id: string;
+    from_display_name: string;
+    to_member_id: string;
+    to_display_name: string;
+    amount: number;
+  }[];
+};
+
 export type ExpenseInput = {
   description: string;
   amount: number;
@@ -88,4 +100,6 @@ export const api = {
   addExpense: (id: string, expense: ExpenseInput) =>
     request<Expense>(`/groups/${id}/expenses`, expense),
   getBalances: (id: string) => request<Balances>(`/groups/${id}/balances`),
+  getSettlementSuggestions: (id: string) =>
+    request<SettlementSuggestions>(`/groups/${id}/settlement-suggestions`),
 };

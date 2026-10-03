@@ -48,5 +48,43 @@ members from another group are rejected. Recalculating the same supplied history
 yields the same result.
 
 The caller must include historical members referenced by financial records.
-Inactive-member selection, void/replacement filtering, persistence, idempotency,
-concurrency controls, and settlement suggestions are deferred.
+Inactive-member selection, void/replacement filtering, idempotency, and concurrency
+controls are deferred. The application loads persisted history before calling
+accounting.
+
+## Settlement suggestions
+
+These values have different meanings:
+
+- A **balance** is a member's current net financial position derived from history.
+- A **SettlementSuggestion** is an immutable proposed transfer with
+  `from_member_id`, `to_member_id`, and positive integer NTD `amount`. It has no
+  payment identity, timestamps, or recording actor and is never persisted.
+- A **Settlement** records a real-world payment that occurred. Only these actual
+  transfers affect the balance formula above. Reading suggestions changes neither
+  financial history nor balances.
+
+`suggest_settlements(balances)` takes a UUID-to-integer mapping whose total must be
+zero. Noninteger balances (including booleans), invalid member IDs, and nonzero
+totals raise `AccountingValidationError`. Zero-balance members are ignored; an
+empty or all-zero mapping returns no suggestions.
+
+Debtors and creditors are sorted separately by descending original balance
+magnitude, then ascending UUID. The algorithm matches the current debtor and
+creditor for `min(debt_remaining, credit_remaining)`, advancing either side when
+it reaches zero. Ordering is fixed at the start; remaining amounts are not
+re-sorted. Input insertion order does not affect the resulting tuple, and the
+input mapping is not mutated. All arithmetic uses integers.
+
+Every sender starts with a negative balance and every recipient with a positive
+balance. Transfer amounts are positive, sender and recipient differ, and applying
+the proposed transfers increases sender balances and decreases recipient balances
+until every supplied balance is zero. Each transfer conserves the group total.
+
+This greedy matching produces deterministic settlement suggestions; it does **not**
+guarantee the mathematically minimum number of transfers.
+
+The application reuses `get_balances()` and then calls `suggest_settlements()`.
+`GET /api/v1/groups/{group_id}/settlement-suggestions` includes member IDs, display
+names, currency, and amounts; unknown groups return 404 and settled groups return
+an empty suggestions list. Suggestions have no write endpoint or storage model.

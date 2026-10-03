@@ -12,6 +12,7 @@ from app.api.dependencies import get_session
 from app.application.service import DEVELOPMENT_ACTOR
 from app.main import app
 from app.persistence.models import UserRow
+from app.persistence.repository import LedgerRepository
 
 pytestmark = pytest.mark.integration
 OCCURRED = "2026-10-02T20:00:00+08:00"
@@ -74,6 +75,7 @@ def test_health_and_openapi_contract(client: TestClient) -> None:
     assert "/api/v1/groups" in paths
     assert "/api/v1/groups/{group_id}/expenses" in paths
     assert "/api/v1/groups/{group_id}/balances" in paths
+    assert "/api/v1/groups/{group_id}/settlement-suggestions" in paths
     assert "201" in paths["/api/v1/groups"]["post"]["responses"]
 
 
@@ -325,3 +327,115 @@ def test_invalid_expense_does_not_persist_actor_or_history(
 def test_uuid_paths_reject_malformed_ids(client: TestClient) -> None:
     assert client.get("/api/v1/groups/not-a-uuid").status_code == 422
     assert UUID(group(client)["id"])
+
+
+def assert_response_settles(current: dict[str, int], suggestions: list[dict]) -> None:
+    remaining = current.copy()
+    for suggestion in suggestions:
+        sender = suggestion["from_member_id"]
+        recipient = suggestion["to_member_id"]
+        amount = suggestion["amount"]
+        assert type(amount) is int and amount > 0
+        assert sender != recipient
+        assert current[sender] < 0 < current[recipient]
+        remaining[sender] += amount
+        remaining[recipient] -= amount
+        assert sum(remaining.values()) == 0
+    assert all(amount == 0 for amount in remaining.values())
+
+
+def test_equal_expense_suggestions_are_read_only(
+    client: TestClient, db_session: Session
+) -> None:
+    trip = group(client)
+    alice, bob, charlie = (
+        member(client, trip["id"], name) for name in ("Alice", "Bob", "Charlie")
+    )
+    history_path = f"/api/v1/groups/{trip['id']}/expenses"
+    response = client.post(
+        history_path,
+        json=equal_payload(alice["id"], [alice["id"], bob["id"], charlie["id"]]),
+    )
+    assert response.status_code == 201, response.text
+    current = balances(client, trip["id"])
+    assert current == {alice["id"]: 600, bob["id"]: -300, charlie["id"]: -300}
+    history = client.get(history_path).json()
+
+    path = f"/api/v1/groups/{trip['id']}/settlement-suggestions"
+    response = client.get(path)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result == {
+        "group_id": trip["id"],
+        "currency": "TWD",
+        "suggestions": [
+            {
+                "from_member_id": debtor["id"],
+                "from_display_name": debtor["display_name"],
+                "to_member_id": alice["id"],
+                "to_display_name": "Alice",
+                "amount": 300,
+            }
+            for debtor in sorted([bob, charlie], key=lambda value: value["id"])
+        ],
+    }
+    assert client.get(path).json() == result
+    assert_response_settles(current, result["suggestions"])
+    assert balances(client, trip["id"]) == current
+    assert client.get(history_path).json() == history
+    assert LedgerRepository(db_session).list_settlements(UUID(trip["id"])) == ()
+
+
+def test_multiple_payer_suggestions_are_deterministic_and_group_scoped(
+    client: TestClient,
+) -> None:
+    trip = group(client)
+    travelers = [member(client, trip["id"], name) for name in ("A", "B", "C", "D")]
+    ids = [traveler["id"] for traveler in travelers]
+    for payer_id, amount in ((ids[0], 900), (ids[1], 600)):
+        response = client.post(
+            f"/api/v1/groups/{trip['id']}/expenses",
+            json=equal_payload(payer_id, ids, amount),
+        )
+        assert response.status_code == 201, response.text
+
+    other = group(client, "Other trip")
+    foreign = [member(client, other["id"], name) for name in ("Foreign A", "Foreign B")]
+    response = client.post(
+        f"/api/v1/groups/{other['id']}/expenses",
+        json=equal_payload(foreign[0]["id"], [value["id"] for value in foreign], 100),
+    )
+    assert response.status_code == 201, response.text
+
+    current = balances(client, trip["id"])
+    assert current == {ids[0]: 525, ids[1]: 225, ids[2]: -375, ids[3]: -375}
+    path = f"/api/v1/groups/{trip['id']}/settlement-suggestions"
+    response = client.get(path)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert client.get(path).json() == result
+    assert_response_settles(current, result["suggestions"])
+    names = {traveler["id"]: traveler["display_name"] for traveler in travelers}
+    for suggestion in result["suggestions"]:
+        assert suggestion["from_display_name"] == names[suggestion["from_member_id"]]
+        assert suggestion["to_display_name"] == names[suggestion["to_member_id"]]
+    assert balances(client, trip["id"]) == current
+
+
+def test_settled_and_missing_group_suggestions(client: TestClient) -> None:
+    trip = group(client)
+    path = f"/api/v1/groups/{trip['id']}/settlement-suggestions"
+    expected = {"group_id": trip["id"], "currency": "TWD", "suggestions": []}
+    assert client.get(path).json() == expected
+    alice = member(client, trip["id"], "Alice")
+    assert client.get(path).json() == expected
+    response = client.post(
+        f"/api/v1/groups/{trip['id']}/expenses",
+        json=equal_payload(alice["id"], [alice["id"]]),
+    )
+    assert response.status_code == 201, response.text
+    assert client.get(path).json() == expected
+    assert (
+        client.get(f"/api/v1/groups/{uuid4()}/settlement-suggestions").status_code
+        == 404
+    )

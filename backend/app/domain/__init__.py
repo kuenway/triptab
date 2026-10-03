@@ -7,6 +7,7 @@ from app.domain.models import (
     Group,
     GroupMember,
     Settlement,
+    SettlementSuggestion,
     SplitStrategy,
     User,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "Group",
     "GroupMember",
     "Settlement",
+    "SettlementSuggestion",
     "SplitStrategy",
     "User",
 ]

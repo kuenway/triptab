@@ -1,8 +1,9 @@
 # TripTab
 
 TripTab is a local travel-expense app for trusted groups. The frontend supports
-trips, travelers, Equal and Exact expenses, history, and derived balances. The
-FastAPI backend stores financial history in PostgreSQL and owns the accounting.
+trips, travelers, Equal and Exact expenses, history, derived balances, and suggested
+payments. The FastAPI backend stores financial history in PostgreSQL and owns the
+accounting.
 
 ## Requirements
 
@@ -55,6 +56,8 @@ no user account.
 In the browser, create a trip, add travelers, record an Equal or Exact expense,
 then read its stored allocations and the group's balances. The payer can be
 outside the split. Monetary amounts are whole NTD; currency is always TWD.
+The trip's **Suggested payments** section proposes transfers to settle those
+balances. These suggestions do not record payments or change financial history.
 
 ## Checks
 
