@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import Home from "../app/page";
-import { BalanceList, ExpenseForm, ExpenseHistory, SuggestedPayments, TravelerForm, TripDashboard } from "../components/trip-dashboard";
-import { api, ApiError, Expense, SettlementSuggestions, Traveler, Trip } from "../lib/api";
+import { BalanceList, ExpenseForm, ExpenseHistory, TravelerForm, TripDashboard } from "../components/trip-dashboard";
+import { PaymentForm, PaymentHistory, SuggestedPayments } from "../components/payments";
+import { api, ApiError, Expense, Settlement, SettlementSuggestions, Traveler, Trip } from "../lib/api";
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -33,6 +34,7 @@ const expense: Expense = {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(api.getSettlementSuggestions).mockResolvedValue({ group_id: trip.id, currency: "TWD", suggestions: [] });
+  vi.mocked(api.listSettlements).mockResolvedValue([]);
 });
 
 it("renders trips from the API", async () => {
@@ -150,19 +152,19 @@ const suggestions: SettlementSuggestions = {
 };
 
 it.each([1, 2])("renders %i suggested payments with names and whole TWD amounts", (count) => {
-  render(<SuggestedPayments suggestions={{ ...suggestions, suggestions: suggestions.suggestions.slice(0, count) }} />);
+  render(<SuggestedPayments tripId={trip.id} travelers={travelers} onRecorded={vi.fn().mockResolvedValue(undefined)} suggestions={{ ...suggestions, suggestions: suggestions.suggestions.slice(0, count) }} />);
   expect(screen.getByText("Bob → Alice")).toBeTruthy();
   expect(screen.getByText("NT$1,234")).toBeTruthy();
   if (count === 2) {
     expect(screen.getByText("Charlie → Alice")).toBeTruthy();
     expect(screen.getByText("NT$300")).toBeTruthy();
   }
-  expect(screen.queryByRole("button")).toBeNull();
+  expect(screen.getAllByRole("button", { name: "Mark as paid" })).toHaveLength(count);
   expect(screen.queryByRole("checkbox")).toBeNull();
 });
 
 it("shows the settled suggestion empty state", () => {
-  render(<SuggestedPayments suggestions={{ ...suggestions, suggestions: [] }} />);
+  render(<SuggestedPayments tripId={trip.id} travelers={travelers} onRecorded={vi.fn().mockResolvedValue(undefined)} suggestions={{ ...suggestions, suggestions: [] }} />);
   expect(screen.getByText("Everyone is settled up.")).toBeTruthy();
 });
 
@@ -173,15 +175,15 @@ function mockDashboard() {
   vi.mocked(api.getBalances).mockResolvedValue({ group_id: trip.id, currency: "TWD", balances: [] });
 }
 
-it("loads backend suggestions into the trip without payment confirmation controls", async () => {
+it("loads backend suggestions into the trip with explicit payment actions", async () => {
   mockDashboard();
   vi.mocked(api.getSettlementSuggestions).mockResolvedValue(suggestions);
   render(<TripDashboard tripId={trip.id} />);
   expect(await screen.findByText("Bob → Alice")).toBeTruthy();
   expect(screen.getByRole("heading", { name: "Suggested payments" })).toBeTruthy();
-  expect(screen.getByText("These suggestions do not record payments.")).toBeTruthy();
+  expect(screen.getByText("Mark as paid only after a payment happened outside TripTab.")).toBeTruthy();
   expect(api.getSettlementSuggestions).toHaveBeenCalledWith(trip.id);
-  expect(screen.queryByRole("button", { name: /mark paid|confirm payment|settle/i })).toBeNull();
+  expect(screen.getAllByRole("button", { name: "Mark as paid" })).toHaveLength(2);
 });
 
 it("shows suggestion API errors without claiming everyone is settled", async () => {
@@ -205,4 +207,142 @@ it("refreshes suggestions from the backend after an expense is saved", async () 
   expect(await screen.findByText("Everyone is settled up.")).toBeTruthy();
   expect(api.getSettlementSuggestions).toHaveBeenCalledTimes(2);
   expect(screen.queryByText("Bob → Alice")).toBeNull();
+});
+
+const payment: Settlement = {
+  id: "payment-1", group_id: trip.id,
+  from_member_id: "bob", from_display_name: "Bob",
+  to_member_id: "alice", to_display_name: "Alice", amount: 300,
+  occurred_at: "2026-10-03T12:30:00Z", created_at: "2026-10-03T12:31:00Z",
+};
+
+it("requires explicit confirmation and supports cancelling a suggested payment", () => {
+  render(<SuggestedPayments tripId={trip.id} travelers={travelers} suggestions={suggestions} onRecorded={vi.fn().mockResolvedValue(undefined)} />);
+  fireEvent.click(screen.getAllByRole("button", { name: "Mark as paid" })[0]);
+  const confirmation = screen.getByRole("group", { name: "Record payment?" });
+  expect(within(confirmation).getByText(/This records that Bob paid Alice NT\$1,234 outside TripTab/)).toBeTruthy();
+  expect(within(confirmation).getByText("TripTab does not transfer money.")).toBeTruthy();
+  expect(api.recordSettlement).not.toHaveBeenCalled();
+  fireEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("group", { name: "Record payment?" })).toBeNull();
+  expect(api.recordSettlement).not.toHaveBeenCalled();
+});
+
+it("records a suggestion once while pending and waits for the authoritative refresh", async () => {
+  let resolvePayment!: (value: Settlement) => void;
+  vi.mocked(api.recordSettlement).mockReturnValue(new Promise((resolve) => { resolvePayment = resolve; }));
+  const onRecorded = vi.fn().mockResolvedValue(undefined);
+  render(<SuggestedPayments tripId={trip.id} travelers={travelers} suggestions={suggestions} onRecorded={onRecorded} />);
+  fireEvent.click(screen.getAllByRole("button", { name: "Mark as paid" })[0]);
+  const confirmation = screen.getByRole("group", { name: "Record payment?" });
+  fireEvent.change(within(confirmation).getByLabelText("When did the payment happen?"), { target: { value: "2026-10-03T12:30" } });
+  const form = within(confirmation).getByRole("button", { name: "Record payment" }).closest("form")!;
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  expect(api.recordSettlement).toHaveBeenCalledTimes(1);
+  expect(api.recordSettlement).toHaveBeenCalledWith(trip.id, {
+    from_member_id: "bob", to_member_id: "alice", amount: 1234,
+    occurred_at: new Date("2026-10-03T12:30").toISOString(),
+  });
+  expect(within(confirmation).getByRole("button", { name: "Recording…" }).hasAttribute("disabled")).toBe(true);
+  expect(onRecorded).not.toHaveBeenCalled();
+  resolvePayment(payment);
+  await waitFor(() => expect(onRecorded).toHaveBeenCalledOnce());
+  await waitFor(() => expect(screen.queryByRole("group", { name: "Record payment?" })).toBeNull());
+});
+
+function fillPayment(amount = "100") {
+  fireEvent.change(screen.getByLabelText("From traveler"), { target: { value: "bob" } });
+  fireEvent.change(screen.getByLabelText("To traveler"), { target: { value: "alice" } });
+  fireEvent.change(screen.getByLabelText("Payment amount (NT$)"), { target: { value: amount } });
+  fireEvent.change(screen.getByLabelText("When did the payment happen?"), { target: { value: "2026-10-03T12:30" } });
+}
+
+it.each(["100", "400"])("records a manual custom payment of %s NTD", async (amount) => {
+  vi.mocked(api.recordSettlement).mockResolvedValue({ ...payment, amount: Number(amount) });
+  const onRecorded = vi.fn().mockResolvedValue(undefined);
+  render(<PaymentForm tripId={trip.id} travelers={travelers} onRecorded={onRecorded} />);
+  fillPayment(amount);
+  fireEvent.click(screen.getByRole("button", { name: "Record payment" }));
+  await waitFor(() => expect(api.recordSettlement).toHaveBeenCalledWith(trip.id, expect.objectContaining({ from_member_id: "bob", to_member_id: "alice", amount: Number(amount) })));
+  expect(await screen.findByText("Payment recorded.")).toBeTruthy();
+  await waitFor(() => expect(onRecorded).toHaveBeenCalledOnce());
+});
+
+it("rejects the same sender and recipient without making a write", () => {
+  render(<PaymentForm tripId={trip.id} travelers={travelers} onRecorded={vi.fn().mockResolvedValue(undefined)} />);
+  fillPayment();
+  fireEvent.change(screen.getByLabelText("To traveler"), { target: { value: "bob" } });
+  fireEvent.click(screen.getByRole("button", { name: "Record payment" }));
+  expect(screen.getByRole("alert")).toHaveProperty("textContent", "Sender and recipient must be different travelers.");
+  expect(api.recordSettlement).not.toHaveBeenCalled();
+});
+
+it.each(["0", "1.5"])("rejects invalid manual amounts (%s)", (amount) => {
+  render(<PaymentForm tripId={trip.id} travelers={travelers} onRecorded={vi.fn().mockResolvedValue(undefined)} />);
+  fillPayment(amount);
+  fireEvent.submit(screen.getByRole("button", { name: "Record payment" }).closest("form")!);
+  expect(screen.getByRole("alert")).toHaveProperty("textContent", "Enter a positive whole NTD amount.");
+  expect(api.recordSettlement).not.toHaveBeenCalled();
+});
+
+it.each([
+  [new ApiError("Payment could not be recorded.", 422), "Payment could not be recorded."],
+  [new ApiError("Network failed.", 0), "Could not confirm whether the payment was recorded. Refresh payment history before trying again."],
+])("shows payment errors without implying a successful write", async (error, message) => {
+  vi.mocked(api.recordSettlement).mockRejectedValue(error);
+  const onRecorded = vi.fn().mockResolvedValue(undefined);
+  render(<PaymentForm tripId={trip.id} travelers={travelers} onRecorded={onRecorded} />);
+  fillPayment();
+  fireEvent.click(screen.getByRole("button", { name: "Record payment" }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", message);
+  expect(screen.queryByText("Payment recorded.")).toBeNull();
+  expect(onRecorded).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Record payment" }).hasAttribute("disabled")).toBe(false);
+});
+
+it("renders actual payment history with names, amounts and event dates", () => {
+  render(<PaymentHistory payments={[payment]} />);
+  expect(screen.getByRole("heading", { name: "Bob paid Alice" })).toBeTruthy();
+  expect(screen.getByText("NT$300")).toBeTruthy();
+  expect(screen.getByText(new Date(payment.occurred_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }))).toBeTruthy();
+});
+
+it("shows the empty payment history state", () => {
+  render(<PaymentHistory payments={[]} />);
+  expect(screen.getByText("No payments recorded yet.")).toBeTruthy();
+});
+
+it("refreshes backend balances, suggestions and history after confirming a payment", async () => {
+  mockDashboard();
+  vi.mocked(api.getBalances).mockResolvedValueOnce({ group_id: trip.id, currency: "TWD", balances: [] }).mockResolvedValueOnce({ group_id: trip.id, currency: "TWD", balances: [
+    { member_id: "alice", display_name: "Alice", amount: 300 },
+    { member_id: "bob", display_name: "Bob", amount: 0 },
+    { member_id: "charlie", display_name: "Charlie", amount: -300 },
+  ] });
+  const initial = { ...suggestions, suggestions: suggestions.suggestions.map((value) => ({ ...value, amount: 300 })) };
+  vi.mocked(api.getSettlementSuggestions).mockResolvedValueOnce(initial).mockResolvedValueOnce({ ...initial, suggestions: [initial.suggestions[1]] });
+  vi.mocked(api.listSettlements).mockResolvedValueOnce([]).mockResolvedValueOnce([payment]);
+  vi.mocked(api.recordSettlement).mockResolvedValue(payment);
+  render(<TripDashboard tripId={trip.id} />);
+  await screen.findByText("Bob → Alice");
+  fireEvent.click(screen.getAllByRole("button", { name: "Mark as paid" })[0]);
+  fireEvent.click(within(screen.getByRole("group", { name: "Record payment?" })).getByRole("button", { name: "Record payment" }));
+  expect(await screen.findByRole("heading", { name: "Bob paid Alice" })).toBeTruthy();
+  expect(screen.getByText("gets back NT$300")).toBeTruthy();
+  expect(screen.getByText("settled")).toBeTruthy();
+  expect(screen.getByText("owes NT$300")).toBeTruthy();
+  expect(screen.queryByText("Bob → Alice")).toBeNull();
+  expect(screen.getByText("Charlie → Alice")).toBeTruthy();
+  expect(api.getBalances).toHaveBeenCalledTimes(2);
+  expect(api.getSettlementSuggestions).toHaveBeenCalledTimes(2);
+  expect(api.listSettlements).toHaveBeenCalledTimes(2);
+});
+
+it("shows payment history read errors without presenting an empty history", async () => {
+  mockDashboard();
+  vi.mocked(api.listSettlements).mockRejectedValue(new ApiError("Could not load payment history.", 500));
+  render(<TripDashboard tripId={trip.id} />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not load payment history.");
+  expect(screen.queryByText("No payments recorded yet.")).toBeNull();
 });

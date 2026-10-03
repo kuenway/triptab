@@ -88,3 +88,41 @@ The application reuses `get_balances()` and then calls `suggest_settlements()`.
 `GET /api/v1/groups/{group_id}/settlement-suggestions` includes member IDs, display
 names, currency, and amounts; unknown groups return 404 and settled groups return
 an empty suggestions list. Suggestions have no write endpoint or storage model.
+
+## Recording actual payments
+
+`POST /api/v1/groups/{group_id}/settlements` records a transfer that already
+occurred outside TripTab; TripTab does not move money. The application constructs
+the existing immutable `Settlement`, and the repository validates group membership
+before flushing it in the application-owned transaction. The transaction commits
+once, including creation of the development actor if needed. Failures roll back
+both the payment and any newly created actor. No balance columns are stored.
+
+The sender's balance increases by the amount; the recipient's decreases. For
+Alice `+600`, Bob `-300`, and Charlie `-300`, recording Bob paying Alice NT$300
+yields Alice `+300`, Bob `0`, and Charlie `-300`. A NT$100 partial payment leaves
+Bob owing NT$200. A NT$400 payment makes Bob's balance `+100`: overpayments remain
+valid actual history, and can reverse who owes whom. Neither the current balance
+nor a suggested amount caps an actual payment.
+
+`GET /api/v1/groups/{group_id}/settlements` returns actual recorded payments with
+display names, ordered by `occurred_at` descending, then UUID descending (matching
+expense-history ordering). Payment history stays separate from expense history.
+Suggestions are never included in it.
+
+A displayed suggestion can become stale. Confirming it asserts that the supplied
+real-world transfer occurred, rather than executing a current financial plan.
+There is no suggestion pointer or ledger-version check. After recording a payment,
+the frontend refreshes authoritative balances, suggestions, and payment history;
+it does not calculate balance changes itself.
+
+The payment form disables submission while a request or refresh is pending and
+guards repeated submissions from the same form interaction. This is UI protection,
+not an exactly-once guarantee. An uncertain network response may follow a committed
+write; check payment history before retrying. Server-side idempotency, ledger
+versions, and optimistic locking remain production-hardening concerns.
+
+The single internal `DEVELOPMENT_ACTOR` in `app/application/service.py` supplies
+`created_by_user_id` for **both expense creation and settlement recording**. These
+are its only recording uses. It is not an authenticated user and must be replaced
+by the real authenticated actor in both operations when authentication is added.

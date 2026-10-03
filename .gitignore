@@ -19,6 +19,8 @@ node_modules/
 out/
 *.tsbuildinfo
 next-env.d.ts
+frontend/test-results/
+frontend/playwright-report/
 
 # Editors and operating systems
 .DS_Store

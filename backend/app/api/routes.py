@@ -17,6 +17,8 @@ from app.api.schemas import (
     MemberBalance,
     MemberCreate,
     MemberResponse,
+    SettlementCreate,
+    SettlementResponse,
     SettlementSuggestionResponse,
     SettlementSuggestionsResponse,
 )
@@ -171,3 +173,42 @@ def get_settlement_suggestions(
             for suggestion in suggestions
         ],
     )
+
+
+@router.post(
+    "/groups/{group_id}/settlements",
+    response_model=SettlementResponse,
+    status_code=201,
+    tags=["settlements"],
+)
+def record_settlement(
+    group_id: UUID, request: SettlementCreate, service: ServiceDependency
+) -> SettlementResponse:
+    settlement = service.record_settlement(
+        group_id=group_id,
+        from_member_id=request.from_member_id,
+        to_member_id=request.to_member_id,
+        amount=request.amount,
+        occurred_at=request.occurred_at,
+    )
+    names = {
+        member.id: member.display_name for member in service.list_members(group_id)
+    }
+    return SettlementResponse.from_domain(settlement, names)
+
+
+@router.get(
+    "/groups/{group_id}/settlements",
+    response_model=list[SettlementResponse],
+    tags=["settlements"],
+)
+def list_settlements(
+    group_id: UUID, service: ServiceDependency
+) -> list[SettlementResponse]:
+    names = {
+        member.id: member.display_name for member in service.list_members(group_id)
+    }
+    return [
+        SettlementResponse.from_domain(settlement, names)
+        for settlement in service.list_settlements(group_id)
+    ]

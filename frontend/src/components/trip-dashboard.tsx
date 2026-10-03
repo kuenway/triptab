@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
-import { api, ApiError, Balances, Expense, ExpenseInput, SettlementSuggestions, Traveler, Trip } from "../lib/api";
+import { api, ApiError, Balances, Expense, ExpenseInput, Settlement, SettlementSuggestions, Traveler, Trip } from "../lib/api";
+import { PaymentForm, PaymentHistory, SuggestedPayments } from "./payments";
 
 const money = (amount: number) => `NT$${new Intl.NumberFormat("en-US").format(amount)}`;
 
@@ -48,20 +49,6 @@ export function BalanceList({ balances }: { balances: Balances }) {
           <span className={`balance-value ${balance.amount > 0 ? "positive" : balance.amount < 0 ? "negative" : "even"}`}>
             {balance.amount > 0 ? `gets back ${money(balance.amount)}` : balance.amount < 0 ? `owes ${money(-balance.amount)}` : "settled"}
           </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-export function SuggestedPayments({ suggestions }: { suggestions: SettlementSuggestions }) {
-  if (suggestions.suggestions.length === 0) return <p className="muted">Everyone is settled up.</p>;
-  return (
-    <div className="balance-list">
-      {suggestions.suggestions.map((suggestion) => (
-        <div className="balance-row" key={`${suggestion.from_member_id}-${suggestion.to_member_id}`}>
-          <span className="person-name">{suggestion.from_display_name} → {suggestion.to_display_name}</span>
-          <span className="balance-value">{money(suggestion.amount)}</span>
         </div>
       ))}
     </div>
@@ -207,6 +194,8 @@ export function TripDashboard({ tripId }: { tripId: string }) {
   const [balances, setBalances] = useState<Balances | null>(null);
   const [suggestions, setSuggestions] = useState<SettlementSuggestions | null>(null);
   const [suggestionsError, setSuggestionsError] = useState("");
+  const [payments, setPayments] = useState<Settlement[] | null>(null);
+  const [paymentsError, setPaymentsError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notFound, setNotFound] = useState(false);
@@ -214,11 +203,17 @@ export function TripDashboard({ tripId }: { tripId: string }) {
   const load = useCallback(async () => {
     setSuggestions(null);
     setSuggestionsError("");
+    setPayments(null);
+    setPaymentsError("");
     try {
-      const [nextTrip, nextTravelers, nextExpenses, nextBalances, nextSuggestions] = await Promise.all([
+      const [nextTrip, nextTravelers, nextExpenses, nextBalances, nextSuggestions, nextPayments] = await Promise.all([
         api.getTrip(tripId), api.listTravelers(tripId), api.listExpenses(tripId), api.getBalances(tripId),
         api.getSettlementSuggestions(tripId).catch((cause: Error) => {
           setSuggestionsError(cause.message);
+          return null;
+        }),
+        api.listSettlements(tripId).catch((cause: Error) => {
+          setPaymentsError(cause.message);
           return null;
         }),
       ]);
@@ -227,6 +222,7 @@ export function TripDashboard({ tripId }: { tripId: string }) {
       setExpenses(nextExpenses);
       setBalances(nextBalances);
       setSuggestions(nextSuggestions);
+      setPayments(nextPayments);
       setError("");
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 404) setNotFound(true);
@@ -251,10 +247,12 @@ export function TripDashboard({ tripId }: { tripId: string }) {
         <div className="dashboard-main">
           <section className="panel" aria-labelledby="add-expense-heading"><div className="section-heading"><h2 id="add-expense-heading">Add an expense</h2></div><ExpenseForm tripId={tripId} travelers={travelers} onCreated={() => void load()} /></section>
           <section className="panel" aria-labelledby="expenses-heading"><div className="section-heading"><h2 id="expenses-heading">Expense history</h2><span className="count">{expenses.length}</span></div><ExpenseHistory expenses={expenses} travelers={travelers} /></section>
+          <section className="panel" aria-labelledby="record-payment-heading"><div className="section-heading"><h2 id="record-payment-heading">Record payment</h2></div><PaymentForm tripId={tripId} travelers={travelers} onRecorded={load} /></section>
+          <section className="panel" aria-labelledby="payment-history-heading"><div className="section-heading"><h2 id="payment-history-heading">Payment history</h2></div>{paymentsError ? <p className="alert" role="alert">{paymentsError}</p> : payments ? <PaymentHistory payments={payments} /> : <p className="muted" role="status">Loading payment history…</p>}</section>
         </div>
         <div className="dashboard-side">
           <section className="panel" aria-labelledby="balances-heading"><div className="section-heading"><h2 id="balances-heading">Balances</h2></div><p className="muted section-caption">Who should receive and who owes.</p>{balances ? <BalanceList balances={balances} /> : <p className="muted">Loading balances…</p>}</section>
-          <section className="panel" aria-labelledby="suggested-payments-heading"><div className="section-heading"><h2 id="suggested-payments-heading">Suggested payments</h2></div><p className="muted section-caption">These suggestions do not record payments.</p>{suggestionsError ? <p className="alert" role="alert">{suggestionsError}</p> : suggestions ? <SuggestedPayments suggestions={suggestions} /> : <p className="muted" role="status">Loading suggested payments…</p>}</section>
+          <section className="panel" aria-labelledby="suggested-payments-heading"><div className="section-heading"><h2 id="suggested-payments-heading">Suggested payments</h2></div><p className="muted section-caption">Mark as paid only after a payment happened outside TripTab.</p>{suggestionsError ? <p className="alert" role="alert">{suggestionsError}</p> : suggestions ? <SuggestedPayments tripId={tripId} travelers={travelers} suggestions={suggestions} onRecorded={load} /> : <p className="muted" role="status">Loading suggested payments…</p>}</section>
           <section className="panel" aria-labelledby="travelers-heading"><div className="section-heading"><h2 id="travelers-heading">Travelers</h2><span className="count">{travelers.length}</span></div>{travelers.length === 0 ? <p className="muted">No travelers yet. Add the people sharing this trip.</p> : <div className="traveler-list">{travelers.map((traveler) => <div className="traveler-row" key={traveler.id}><span className="person-dot" aria-hidden="true">{traveler.display_name.charAt(0).toUpperCase()}</span>{traveler.display_name}</div>)}</div>}<TravelerForm tripId={tripId} onAdded={() => void load()} /></section>
         </div>
       </div>

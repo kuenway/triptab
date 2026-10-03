@@ -6,10 +6,12 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session
 from app.application.service import DEVELOPMENT_ACTOR
+from app.domain import Settlement
 from app.main import app
 from app.persistence.models import UserRow
 from app.persistence.repository import LedgerRepository
@@ -439,3 +441,212 @@ def test_settled_and_missing_group_suggestions(client: TestClient) -> None:
         client.get(f"/api/v1/groups/{uuid4()}/settlement-suggestions").status_code
         == 404
     )
+
+
+def settlement_payload(sender: str, recipient: str, amount: int = 300) -> dict:
+    return {
+        "from_member_id": sender,
+        "to_member_id": recipient,
+        "amount": amount,
+        "occurred_at": OCCURRED,
+    }
+
+
+def test_settlement_creation_round_trip_and_balance_refresh(
+    client: TestClient, db_session: Session
+) -> None:
+    trip = group(client)
+    alice, bob, charlie = (
+        member(client, trip["id"], name) for name in ("Alice", "Bob", "Charlie")
+    )
+    expense = client.post(
+        f"/api/v1/groups/{trip['id']}/expenses",
+        json=equal_payload(alice["id"], [alice["id"], bob["id"], charlie["id"]]),
+    )
+    assert expense.status_code == 201, expense.text
+    assert balances(client, trip["id"]) == {
+        alice["id"]: 600,
+        bob["id"]: -300,
+        charlie["id"]: -300,
+    }
+    base = f"/api/v1/groups/{trip['id']}"
+    assert client.get(f"{base}/settlements").json() == []
+    client.get(f"{base}/settlement-suggestions")
+    assert client.get(f"{base}/settlements").json() == []
+
+    response = client.post(
+        f"{base}/settlements", json=settlement_payload(bob["id"], alice["id"])
+    )
+    assert response.status_code == 201, response.text
+    payment = response.json()
+    assert payment["from_display_name"] == "Bob"
+    assert payment["to_display_name"] == "Alice"
+    assert payment["group_id"] == trip["id"]
+    assert payment["amount"] == 300
+    stored = LedgerRepository(db_session).get_settlement(UUID(payment["id"]))
+    assert stored == Settlement(
+        id=UUID(payment["id"]),
+        group_id=UUID(trip["id"]),
+        from_member_id=UUID(bob["id"]),
+        to_member_id=UUID(alice["id"]),
+        amount_minor=300,
+        occurred_at=datetime.fromisoformat(OCCURRED),
+        created_at=datetime.fromisoformat(payment["created_at"]),
+        created_by_user_id=DEVELOPMENT_ACTOR.id,
+    )
+    assert client.get(f"{base}/settlements").json() == [payment]
+    assert balances(client, trip["id"]) == {
+        alice["id"]: 300,
+        bob["id"]: 0,
+        charlie["id"]: -300,
+    }
+    assert client.get(f"{base}/settlement-suggestions").json()["suggestions"] == [
+        {
+            "from_member_id": charlie["id"],
+            "from_display_name": "Charlie",
+            "to_member_id": alice["id"],
+            "to_display_name": "Alice",
+            "amount": 300,
+        }
+    ]
+
+
+@pytest.mark.parametrize(("amount", "bob_balance"), [(100, -200), (400, 100)])
+def test_partial_and_overpayments_are_actual_history(
+    client: TestClient, amount: int, bob_balance: int
+) -> None:
+    trip = group(client)
+    alice, bob = (member(client, trip["id"], name) for name in ("Alice", "Bob"))
+    response = client.post(
+        f"/api/v1/groups/{trip['id']}/expenses",
+        json=equal_payload(alice["id"], [alice["id"], bob["id"]], 600),
+    )
+    assert response.status_code == 201, response.text
+    response = client.post(
+        f"/api/v1/groups/{trip['id']}/settlements",
+        json=settlement_payload(bob["id"], alice["id"], amount),
+    )
+    assert response.status_code == 201, response.text
+    assert balances(client, trip["id"]) == {
+        alice["id"]: -bob_balance,
+        bob["id"]: bob_balance,
+    }
+
+
+@pytest.mark.parametrize("amount", [0, -1, 1.5, True, "300", 2**63])
+def test_settlement_invalid_amounts_leave_no_history(
+    client: TestClient, amount: object, db_session: Session
+) -> None:
+    trip = group(client)
+    alice, bob = (member(client, trip["id"], name) for name in ("Alice", "Bob"))
+    base = f"/api/v1/groups/{trip['id']}/settlements"
+    assert (
+        client.post(
+            base, json=settlement_payload(bob["id"], alice["id"], amount)
+        ).status_code
+        == 422
+    )
+    assert client.get(base).json() == []
+    assert db_session.get(UserRow, DEVELOPMENT_ACTOR.id) is None
+
+
+def test_settlement_transport_and_same_member_validation(client: TestClient) -> None:
+    trip = group(client)
+    alice, bob = (member(client, trip["id"], name) for name in ("Alice", "Bob"))
+    payload = settlement_payload(bob["id"], alice["id"])
+    base = f"/api/v1/groups/{trip['id']}/settlements"
+    for invalid in (
+        {**payload, "to_member_id": bob["id"]},
+        {**payload, "occurred_at": "2026-10-03T12:30:00"},
+        {**payload, "created_at": OCCURRED},
+        {**payload, "created_by_user_id": str(uuid4())},
+        {**payload, "from_member_id": "not-a-uuid"},
+    ):
+        assert client.post(base, json=invalid).status_code == 422
+    assert client.get(base).json() == []
+
+
+@pytest.mark.parametrize("side", ["from_member_id", "to_member_id"])
+def test_settlement_missing_and_cross_group_members_rejected(
+    client: TestClient, side: str
+) -> None:
+    trip, other = group(client), group(client, "Other")
+    alice, bob = (member(client, trip["id"], name) for name in ("Alice", "Bob"))
+    foreign = member(client, other["id"], "Foreign")
+    base = f"/api/v1/groups/{trip['id']}/settlements"
+    for member_id in (str(uuid4()), foreign["id"]):
+        payload = {**settlement_payload(bob["id"], alice["id"]), side: member_id}
+        assert client.post(base, json=payload).status_code == 404
+    assert client.get(base).json() == []
+    assert client.get(f"/api/v1/groups/{uuid4()}/settlements").status_code == 404
+    assert (
+        client.post(
+            f"/api/v1/groups/{uuid4()}/settlements",
+            json=settlement_payload(bob["id"], alice["id"]),
+        ).status_code
+        == 404
+    )
+
+
+def test_multiple_payments_history_order_and_stale_suggestion(
+    client: TestClient,
+) -> None:
+    trip = group(client)
+    alice, bob = (member(client, trip["id"], name) for name in ("Alice", "Bob"))
+    base = f"/api/v1/groups/{trip['id']}"
+    client.post(
+        f"{base}/expenses",
+        json=equal_payload(alice["id"], [alice["id"], bob["id"]], 600),
+    )
+    stale = client.get(f"{base}/settlement-suggestions").json()["suggestions"][0]
+    assert stale["amount"] == 300
+    recorded = []
+    for amount, when in (
+        (100, OCCURRED),
+        (100, OCCURRED),
+        (stale["amount"], "2026-10-04T12:30:00+08:00"),
+    ):
+        response = client.post(
+            f"{base}/settlements",
+            json={
+                **settlement_payload(bob["id"], alice["id"], amount),
+                "occurred_at": when,
+            },
+        )
+        assert response.status_code == 201, response.text
+        recorded.append(response.json())
+    history = client.get(f"{base}/settlements").json()
+    assert [item["id"] for item in history] == [
+        recorded[2]["id"],
+        *sorted([recorded[0]["id"], recorded[1]["id"]], reverse=True),
+    ]
+    assert client.get(f"{base}/settlements").json() == history
+    assert balances(client, trip["id"]) == {alice["id"]: -200, bob["id"]: 200}
+    assert balances(client, trip["id"]) == {alice["id"]: -200, bob["id"]: 200}
+    other = group(client, "Other")
+    assert client.get(f"/api/v1/groups/{other['id']}/settlements").json() == []
+
+
+def test_failed_settlement_flush_rolls_back_payment_and_actor(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    trip = group(client)
+    alice, bob = (member(client, trip["id"], name) for name in ("Alice", "Bob"))
+    save = LedgerRepository.save_settlement
+
+    def fail_after_flush(repo: LedgerRepository, settlement: Settlement) -> None:
+        save(repo, settlement)
+        raise IntegrityError(
+            "private statement", None, Exception("private database error")
+        )
+
+    monkeypatch.setattr(LedgerRepository, "save_settlement", fail_after_flush)
+    response = client.post(
+        f"/api/v1/groups/{trip['id']}/settlements",
+        json=settlement_payload(bob["id"], alice["id"]),
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": "database constraint violation"}
+    assert client.get(f"/api/v1/groups/{trip['id']}/settlements").json() == []
+    assert db_session.get(UserRow, DEVELOPMENT_ACTOR.id) is None
+    assert balances(client, trip["id"]) == {alice["id"]: 0, bob["id"]: 0}

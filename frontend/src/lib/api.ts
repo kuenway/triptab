@@ -44,6 +44,21 @@ export type SettlementSuggestions = {
   }[];
 };
 
+export type SettlementInput = {
+  from_member_id: string;
+  to_member_id: string;
+  amount: number;
+  occurred_at: string;
+};
+
+export type Settlement = SettlementInput & {
+  id: string;
+  group_id: string;
+  from_display_name: string;
+  to_display_name: string;
+  created_at: string;
+};
+
 export type ExpenseInput = {
   description: string;
   amount: number;
@@ -102,4 +117,7 @@ export const api = {
   getBalances: (id: string) => request<Balances>(`/groups/${id}/balances`),
   getSettlementSuggestions: (id: string) =>
     request<SettlementSuggestions>(`/groups/${id}/settlement-suggestions`),
+  recordSettlement: (id: string, payment: SettlementInput) =>
+    request<Settlement>(`/groups/${id}/settlements`, payment),
+  listSettlements: (id: string) => request<Settlement[]>(`/groups/${id}/settlements`),
 };

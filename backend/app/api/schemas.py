@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictInt
 
-from app.domain import Expense, Group, GroupMember
+from app.domain import Expense, Group, GroupMember, Settlement
 
 Amount = Annotated[StrictInt, Field(gt=0, le=9_223_372_036_854_775_807)]
 SplitAmount = Annotated[StrictInt, Field(ge=0, le=9_223_372_036_854_775_807)]
@@ -141,3 +141,38 @@ class SettlementSuggestionsResponse(BaseModel):
     group_id: UUID
     currency: Literal["TWD"]
     suggestions: list[SettlementSuggestionResponse]
+
+
+class SettlementCreate(RequestModel):
+    from_member_id: UUID
+    to_member_id: UUID
+    amount: Amount
+    occurred_at: AwareDatetime
+
+
+class SettlementResponse(BaseModel):
+    id: UUID
+    group_id: UUID
+    from_member_id: UUID
+    from_display_name: str
+    to_member_id: UUID
+    to_display_name: str
+    amount: int
+    occurred_at: AwareDatetime
+    created_at: AwareDatetime
+
+    @classmethod
+    def from_domain(
+        cls, settlement: Settlement, names: dict[UUID, str]
+    ) -> "SettlementResponse":
+        return cls(
+            id=settlement.id,
+            group_id=settlement.group_id,
+            from_member_id=settlement.from_member_id,
+            from_display_name=names[settlement.from_member_id],
+            to_member_id=settlement.to_member_id,
+            to_display_name=names[settlement.to_member_id],
+            amount=settlement.amount_minor,
+            occurred_at=settlement.occurred_at,
+            created_at=settlement.created_at,
+        )

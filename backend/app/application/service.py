@@ -16,6 +16,7 @@ from app.domain import (
     ExpenseSplit,
     Group,
     GroupMember,
+    Settlement,
     SettlementSuggestion,
     SplitStrategy,
     User,
@@ -150,3 +151,44 @@ class TripTabService:
             {member.id: amount for member, amount in values}
         )
         return group, tuple(member for member, _ in values), suggestions
+
+    def record_settlement(
+        self,
+        group_id: UUID,
+        from_member_id: UUID,
+        to_member_id: UUID,
+        amount: int,
+        occurred_at: datetime,
+    ) -> Settlement:
+        with self.session.begin():
+            self._group(group_id)
+            member_ids = {member.id for member in self.repo.list_members(group_id)}
+            if from_member_id not in member_ids:
+                raise ResourceNotFound("sender member not found in group")
+            if to_member_id not in member_ids:
+                raise ResourceNotFound("recipient member not found in group")
+            settlement = Settlement(
+                id=uuid4(),
+                group_id=group_id,
+                from_member_id=from_member_id,
+                to_member_id=to_member_id,
+                amount_minor=amount,
+                occurred_at=occurred_at.astimezone(UTC),
+                created_at=datetime.now(UTC),
+                created_by_user_id=DEVELOPMENT_ACTOR.id,
+            )
+            if self.repo.get_user(DEVELOPMENT_ACTOR.id) is None:
+                self.repo.save_user(DEVELOPMENT_ACTOR)
+            # The existing repository runs contextual validation before flushing.
+            self.repo.save_settlement(settlement)
+        return settlement
+
+    def list_settlements(self, group_id: UUID) -> tuple[Settlement, ...]:
+        self._group(group_id)
+        return tuple(
+            sorted(
+                self.repo.list_settlements(group_id),
+                key=lambda settlement: (settlement.occurred_at, settlement.id),
+                reverse=True,
+            )
+        )
