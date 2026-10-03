@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Expense Sharing",
-  description: "Project foundation",
+  title: "TripTab — travel expenses made clear",
+  description: "Track shared trip expenses and balances.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

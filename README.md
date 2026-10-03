@@ -1,8 +1,8 @@
 # TripTab
 
-The frontend is a placeholder. The backend exposes `/health` and the first
-versioned group, member, expense, and balance APIs. PostgreSQL stores financial
-history; the accounting engine derives balances from it.
+TripTab is a local travel-expense app for trusted groups. The frontend supports
+trips, travelers, Equal and Exact expenses, history, and derived balances. The
+FastAPI backend stores financial history in PostgreSQL and owns the accounting.
 
 ## Requirements
 
@@ -13,18 +13,23 @@ history; the accounting engine derives balances from it.
 
 ## Local setup
 
-From the repository root:
+Terminal 1, from the repository root:
 
 ```sh
 cp .env.example .env
 docker compose up -d db
+```
+
+Terminal 2, from the repository root:
+
+```sh
 cd backend
 uv sync --python 3.11
 uv run --env-file ../.env alembic upgrade head
 uv run --env-file ../.env uvicorn app.main:app --reload --port 8000
 ```
 
-In another terminal, from the repository root:
+Terminal 3, from the repository root:
 
 ```sh
 cd frontend
@@ -32,9 +37,11 @@ npm ci
 npm run dev
 ```
 
-Open http://localhost:3000 for the placeholder page and
-http://localhost:8000/docs for interactive API documentation. The database listens
-on `127.0.0.1:5433`; `/health` does not check the database.
+Open http://localhost:3000 for TripTab and http://localhost:8000/docs for API
+documentation. The database listens on `127.0.0.1:5433`; `/health` does not check
+the database. The frontend calls `/api/v1` on its own origin, which Next.js
+rewrites to `http://127.0.0.1:8000` during development. To use another backend,
+set `TRIPTAB_API_ORIGIN` in `frontend/.env.local` (see `frontend/.env.example`).
 
 ## Local API workflow
 
@@ -45,27 +52,9 @@ a production access policy. Expense records use an internal development recordin
 user until an authentication milestone supplies real actors. Guest members need
 no user account.
 
-With the local setup above running, create a group with
-`POST /api/v1/groups` and `{"name":"Weekend"}`. Use its returned `id` to create
-Alice and Bob with `POST /api/v1/groups/{group_id}/members` and
-`{"display_name":"Alice"}` or `{"display_name":"Bob"}`. Then create an expense:
-
-```json
-{
-  "description": "Dinner",
-  "amount": 900,
-  "payer_member_id": "<Alice member UUID>",
-  "split_strategy": "equal",
-  "participant_member_ids": ["<Alice member UUID>", "<Bob member UUID>"],
-  "occurred_at": "2026-10-03T19:00:00+08:00"
-}
-```
-
-Send that JSON to `POST /api/v1/groups/{group_id}/expenses`, then read stored
-allocations at `GET /api/v1/groups/{group_id}/expenses` and derived balances at
-`GET /api/v1/groups/{group_id}/balances`. Monetary amounts are whole NTD; the
-group currency is always TWD. An Exact expense uses `"split_strategy":"exact"`
-and `"splits":[{"member_id":"<UUID>","amount":500}, ...]` instead.
+In the browser, create a trip, add travelers, record an Equal or Exact expense,
+then read its stored allocations and the group's balances. The payer can be
+outside the split. Monetary amounts are whole NTD; currency is always TWD.
 
 ## Checks
 
@@ -82,6 +71,7 @@ From `frontend/`:
 ```sh
 npm run lint
 npm run typecheck
+npm test
 npm run build
 ```
 
