@@ -1,0 +1,129 @@
+"""Pydantic HTTP contracts, separate from domain values."""
+
+from typing import Annotated, Literal
+from uuid import UUID
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictInt
+
+from app.domain import Expense, Group, GroupMember
+
+Amount = Annotated[StrictInt, Field(gt=0, le=9_223_372_036_854_775_807)]
+SplitAmount = Annotated[StrictInt, Field(ge=0, le=9_223_372_036_854_775_807)]
+
+
+class RequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class GroupCreate(RequestModel):
+    name: str
+
+
+class GroupResponse(BaseModel):
+    id: UUID
+    name: str
+    currency: Literal["TWD"]
+    currency_scale: Literal[0]
+
+    @classmethod
+    def from_domain(cls, group: Group) -> "GroupResponse":
+        return cls(
+            id=group.id,
+            name=group.name,
+            currency=group.currency,
+            currency_scale=group.currency_scale,
+        )
+
+
+class MemberCreate(RequestModel):
+    display_name: str
+
+
+class MemberResponse(BaseModel):
+    id: UUID
+    group_id: UUID
+    display_name: str
+    user_id: UUID | None
+
+    @classmethod
+    def from_domain(cls, member: GroupMember) -> "MemberResponse":
+        return cls(
+            id=member.id,
+            group_id=member.group_id,
+            display_name=member.display_name,
+            user_id=member.user_id,
+        )
+
+
+class SplitCreate(RequestModel):
+    member_id: UUID
+    amount: SplitAmount
+
+
+class EqualExpenseCreate(RequestModel):
+    description: str
+    amount: Amount
+    payer_member_id: UUID
+    split_strategy: Literal["equal"]
+    participant_member_ids: list[UUID] = Field(min_length=1)
+    occurred_at: AwareDatetime
+
+
+class ExactExpenseCreate(RequestModel):
+    description: str
+    amount: Amount
+    payer_member_id: UUID
+    split_strategy: Literal["exact"]
+    splits: list[SplitCreate] = Field(min_length=1)
+    occurred_at: AwareDatetime
+
+
+ExpenseCreate = Annotated[
+    EqualExpenseCreate | ExactExpenseCreate, Field(discriminator="split_strategy")
+]
+
+
+class SplitResponse(BaseModel):
+    member_id: UUID
+    amount: int
+
+
+class ExpenseResponse(BaseModel):
+    id: UUID
+    group_id: UUID
+    description: str
+    amount: int
+    payer_member_id: UUID
+    split_strategy: Literal["equal", "exact"]
+    splits: list[SplitResponse]
+    occurred_at: AwareDatetime
+    created_at: AwareDatetime
+
+    @classmethod
+    def from_domain(cls, expense: Expense) -> "ExpenseResponse":
+        return cls(
+            id=expense.id,
+            group_id=expense.group_id,
+            description=expense.description,
+            amount=expense.amount_minor,
+            payer_member_id=expense.payer_member_id,
+            split_strategy=expense.split_strategy.value,
+            splits=[
+                SplitResponse(member_id=split.member_id, amount=split.amount_minor)
+                for split in expense.splits
+            ],
+            occurred_at=expense.occurred_at,
+            created_at=expense.created_at,
+        )
+
+
+class MemberBalance(BaseModel):
+    member_id: UUID
+    display_name: str
+    amount: int
+
+
+class BalancesResponse(BaseModel):
+    group_id: UUID
+    currency: Literal["TWD"]
+    balances: list[MemberBalance]

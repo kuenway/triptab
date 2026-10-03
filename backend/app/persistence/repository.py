@@ -55,6 +55,10 @@ class LedgerRepository:
         row = self.session.get(GroupRow, group_id)
         return group_from_row(row) if row else None
 
+    def list_groups(self) -> tuple[Group, ...]:
+        rows = self.session.scalars(select(GroupRow).order_by(GroupRow.id))
+        return tuple(group_from_row(row) for row in rows)
+
     def save_member(self, member: GroupMember) -> None:
         self.session.add(
             GroupMemberRow(
