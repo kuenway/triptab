@@ -10,7 +10,7 @@ alone does not establish that any production resource or backup exists.
 
 `render.yaml` specifies Singapore for backend and database, PostgreSQL **17**
 (matching local/CI), paid database compute `0.1c-256mb`, 1 GB storage, and paid
-backend compute `0.5c-512mb`. Check current price/billing in the selected workspace
+backend compute `1c-2g`. Check current price/billing in the selected workspace
 before provisioning. These are initial small-deployment sizes, not availability
 or capacity guarantees. Storage is durable and the database is not the expiring
 Free plan. Monitor storage and increase it before capacity is reached.
@@ -31,7 +31,9 @@ There are no new or edited schema revisions in M11.
 
 The service binds Render's `$PORT` on `0.0.0.0`, with one worker, one instance,
 no reload, no raw access logs and no proxy-header trust. Its concurrency cap is
-four, reserving memory for the application alongside Argon2 on a 512 MB instance.
+eight, preserving M10's limit and accommodating the trip screen's six concurrent
+reads. The 2 GB instance reserves memory for the application alongside bounded
+Argon2 work; a 512 MB instance cannot safely budget eight simultaneous password hashes.
 Over-capacity requests receive Uvicorn's 503; the `/ready` health check exercises
 database connectivity. `/health` remains independent liveness. No persistent
 backend filesystem is needed.

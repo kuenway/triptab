@@ -6,12 +6,12 @@ services:
     rootDir: backend
     branch: main
     region: singapore
-    plan: 0.5c-512mb
+    plan: 1c-2g
     numInstances: 1
     autoDeployTrigger: "off"
     buildCommand: uv sync --locked --no-dev
     preDeployCommand: uv run --locked --no-dev alembic upgrade head
-    startCommand: uv run --locked --no-dev uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --limit-concurrency 4 --no-access-log --no-proxy-headers
+    startCommand: uv run --locked --no-dev uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --limit-concurrency 8 --no-access-log --no-proxy-headers
     healthCheckPath: /ready
     envVars:
       - key: DATABASE_URL

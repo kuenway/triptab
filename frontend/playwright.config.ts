@@ -14,7 +14,7 @@ export default defineConfig({
   use: { baseURL: "http://127.0.0.1:3100", browserName: "chromium", trace: "off" },
   webServer: [
     {
-      command: "uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8100",
+      command: "uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8100" + (process.env.E2E_PRODUCTION === "true" ? " --workers 1 --limit-concurrency 8 --no-access-log --no-proxy-headers" : ""),
       cwd: resolve(__dirname, "../backend"),
       env: { DATABASE_URL: databaseUrl, TRIPTAB_ENV: "test", TRIPTAB_COOKIE_SECURE: "false", TRIPTAB_ALLOWED_ORIGINS: "http://127.0.0.1:3100", TRIPTAB_AUTH_RATE_LIMIT: "100", TRIPTAB_AUTH_GLOBAL_LIMIT: "100" },
       url: "http://127.0.0.1:8100/health",
