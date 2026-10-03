@@ -116,3 +116,6 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .audit-details { margin-top: 1rem; font-size: .875rem; }
 .audit-details p { margin: .35rem 0; }
 .audit-actions { margin-top: 1rem; }
+
+.auth-shell { max-width: 580px; }
+.account-menu { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }

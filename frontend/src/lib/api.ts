@@ -1,3 +1,8 @@
+export type CurrentUser = { id: string; email: string; display_name: string; created_at: string };
+export type AuthState = { user: CurrentUser; csrf_token: string };
+export const AUTH_EXPIRED_EVENT = "triptab:auth-expired";
+let csrfToken: string | null = null; // CSRF only; the session token stays in its HttpOnly cookie.
+
 export type FinancialAudit = {
   status: "active" | "voided";
   void_reason?: string | null;
@@ -19,6 +24,7 @@ export type Traveler = {
   group_id: string;
   display_name: string;
   user_id: string | null;
+  role: "owner" | "member";
 };
 
 export type ExpenseSplit = { member_id: string; amount: number };
@@ -33,6 +39,7 @@ export type Expense = FinancialAudit & {
   splits: ExpenseSplit[];
   occurred_at: string;
   created_at: string;
+  created_by_user_id: string;
 };
 
 export type Balances = {
@@ -66,6 +73,7 @@ export type Settlement = SettlementInput & FinancialAudit & {
   from_display_name: string;
   to_display_name: string;
   created_at: string;
+  created_by_user_id: string;
 };
 
 export type ExpenseInput = {
@@ -88,11 +96,14 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, body?: object): Promise<T> {
+  const publicAuth = path === "/auth/login" || path === "/auth/register";
+  if (body && !publicAuth && !csrfToken) await api.getMe();
   let response: Response;
   try {
     response = await fetch(`/api/v1${path}`, {
       method: body ? "POST" : "GET",
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      credentials: "same-origin",
+      headers: body ? { "Content-Type": "application/json", ...(!publicAuth && csrfToken ? { "X-CSRF-Token": csrfToken } : {}) } : undefined,
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",
     });
@@ -100,6 +111,10 @@ async function request<T>(path: string, body?: object): Promise<T> {
     throw new ApiError("Could not reach TripTab. Check that the backend is running.", 0);
   }
   if (!response.ok) {
+    if (response.status === 401 && !publicAuth) {
+      csrfToken = null;
+      if (typeof window !== "undefined") window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+    }
     const payload = await response.json().catch(() => null);
     const detail = payload?.detail;
     const message =
@@ -110,10 +125,21 @@ async function request<T>(path: string, body?: object): Promise<T> {
           : `Request failed (${response.status}).`;
     throw new ApiError(message || `Request failed (${response.status}).`, response.status);
   }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
+async function authRequest(path: string, input?: object): Promise<AuthState> {
+  const state = await request<AuthState>(path, input);
+  csrfToken = state.csrf_token;
+  return state;
+}
+
 export const api = {
+  getMe: () => authRequest("/auth/me"),
+  register: (email: string, password: string, display_name: string) => authRequest("/auth/register", { email, password, display_name }),
+  login: (email: string, password: string) => authRequest("/auth/login", { email, password }),
+  logout: async () => { await request<void>("/auth/logout", {}); csrfToken = null; },
   listTrips: () => request<Trip[]>("/groups"),
   createTrip: (name: string) => request<Trip>("/groups", { name }),
   getTrip: (id: string) => request<Trip>(`/groups/${id}`),

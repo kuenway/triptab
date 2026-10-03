@@ -225,3 +225,10 @@ def test_void_values_are_immutable_and_validate_audit_fields(kind):
     ):
         with pytest.raises(DomainValidationError):
             cls(**(values | changes))
+
+
+def test_guest_cannot_be_owner_and_roles_are_explicit():
+    with pytest.raises(DomainValidationError):
+        GroupMember(uuid4(), uuid4(), "Guest", role="owner")
+    with pytest.raises(DomainValidationError):
+        GroupMember(uuid4(), uuid4(), "Member", role="admin")

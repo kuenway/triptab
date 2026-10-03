@@ -46,13 +46,14 @@ set `TRIPTAB_API_ORIGIN` in `frontend/.env.local` (see `frontend/.env.example`).
 
 ## Local API workflow
 
-The product API is under `/api/v1`. For now, it has **no authentication or
-authorization**: any caller with access to the local backend can list all groups
-and read or create records in any group. This is a development-only behavior, not
-a production access policy. Expense records use an internal development recording
-user until an authentication milestone supplies real actors. Settlement recording
-uses the same internal actor. Both uses must be replaced when authentication is
-implemented. Guest members need no user account.
+The product API is under `/api/v1` and requires a real login session and trip
+membership. Register at `/register`, or log in at `/login`. Creating a trip also
+creates your account-linked Owner traveler; add your companions as guests.
+Owners can record guest payments, while registered members have the documented
+financial permissions. Financial actors come from the authenticated account.
+See [authentication, CSRF, permissions, and legacy-data handling](docs/authentication.md).
+For an existing `.env`, add the local cookie and Origin settings from `.env.example`.
+Legacy unowned trips are not exposed to newly registered users.
 
 In the browser, create a trip, add travelers, record an Equal or Exact expense,
 then read its stored allocations and the group's balances. The payer can be
@@ -94,9 +95,9 @@ For database migration, transaction, and integration-test commands, see
 
 ## Browser smoke test
 
-One Playwright Chromium test creates a trip, adds travelers and an Equal expense,
-records a suggested payment, and checks refreshed balances, suggestions, and
-persisted payment history. It uses a separate local `*_e2e_test` database in the
+Three Playwright Chromium flows cover registration, owner and guest travelers,
+expenses, recorded payments, corrections, logout/login, persisted history, and
+isolation between accounts. They use a separate local `*_e2e_test` database in the
 Compose PostgreSQL instance; it refuses the normal development or integration-test
 database. The test writes real records, so use this dedicated database only for
 browser testing. With Compose running, from the repository root:
@@ -112,9 +113,9 @@ E2E_DATABASE_URL=postgresql+psycopg://splitwise:splitwise_local_only@127.0.0.1:5
 ```
 
 Create the browser-test database only once. Playwright starts isolated backend and
-frontend servers on ports 8100 and 3100 and stops them after the test. GitHub CI
+frontend servers on ports 8100 and 3100 and stops them after the suite. GitHub CI
 provides its own PostgreSQL service, migrates its browser-test database, installs
-Chromium, and runs the same smoke test. Server-side idempotency is deferred; UI
+Chromium, and runs the same suite. Server-side idempotency is deferred; UI
 submission guards do not guarantee exactly-once payment recording.
 
 

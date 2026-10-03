@@ -4,9 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
+import { AccountMenu, RequireAuth } from "../components/auth";
+
 import { api, Trip } from "../lib/api";
 
 export default function Home() {
+  return <RequireAuth><TripList /></RequireAuth>;
+}
+
+function TripList() {
   const router = useRouter();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [name, setName] = useState("");
@@ -41,7 +47,7 @@ export default function Home() {
     <main className="shell">
       <header className="site-header">
         <Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link>
-        <span className="header-note">Travel together. Settle clearly.</span>
+        <AccountMenu />
       </header>
 
       <div className="page-intro">
@@ -89,7 +95,7 @@ export default function Home() {
           <p className="form-note">All amounts are in New Taiwan dollars (NT$).</p>
         </section>
       </div>
-      <p className="dev-note">Local development version · No sign-in or access controls yet</p>
+      <p className="dev-note">Private trips · Shared with your trip members</p>
     </main>
   );
 }

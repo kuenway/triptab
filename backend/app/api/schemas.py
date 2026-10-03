@@ -44,6 +44,7 @@ class MemberResponse(BaseModel):
     group_id: UUID
     display_name: str
     user_id: UUID | None
+    role: Literal["owner", "member"]
 
     @classmethod
     def from_domain(cls, member: GroupMember) -> "MemberResponse":
@@ -52,6 +53,7 @@ class MemberResponse(BaseModel):
             group_id=member.group_id,
             display_name=member.display_name,
             user_id=member.user_id,
+            role=member.role,
         )
 
 
@@ -115,6 +117,7 @@ class ExpenseResponse(FinancialAudit):
     splits: list[SplitResponse]
     occurred_at: AwareDatetime
     created_at: AwareDatetime
+    created_by_user_id: UUID
 
     @classmethod
     def from_domain(
@@ -134,6 +137,7 @@ class ExpenseResponse(FinancialAudit):
             ],
             occurred_at=expense.occurred_at,
             created_at=expense.created_at,
+            created_by_user_id=expense.created_by_user_id,
         )
 
 
@@ -184,6 +188,7 @@ class SettlementResponse(FinancialAudit):
     amount: int
     occurred_at: AwareDatetime
     created_at: AwareDatetime
+    created_by_user_id: UUID
 
     @classmethod
     def from_domain(
@@ -200,4 +205,5 @@ class SettlementResponse(FinancialAudit):
             amount=settlement.amount_minor,
             occurred_at=settlement.occurred_at,
             created_at=settlement.created_at,
+            created_by_user_id=settlement.created_by_user_id,
         )

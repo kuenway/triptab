@@ -11,12 +11,12 @@ if (parsed.protocol !== "postgresql+psycopg:" || !["localhost", "127.0.0.1"].inc
 export default defineConfig({
   testDir: "./e2e",
   workers: 1,
-  use: { baseURL: "http://127.0.0.1:3100", browserName: "chromium", trace: "retain-on-failure" },
+  use: { baseURL: "http://127.0.0.1:3100", browserName: "chromium", trace: "off" },
   webServer: [
     {
       command: "uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8100",
       cwd: resolve(__dirname, "../backend"),
-      env: { DATABASE_URL: databaseUrl },
+      env: { DATABASE_URL: databaseUrl, TRIPTAB_COOKIE_SECURE: "false", TRIPTAB_ALLOWED_ORIGINS: "http://127.0.0.1:3100" },
       url: "http://127.0.0.1:8100/health",
       reuseExistingServer: false,
     },

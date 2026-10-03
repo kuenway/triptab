@@ -14,6 +14,7 @@ from app.accounting import (
     suggest_settlements,
     validate_exact_splits,
 )
+from app.application.auth import PermissionDenied
 from app.domain import (
     Expense,
     ExpenseSplit,
@@ -28,14 +29,6 @@ from app.domain import (
 )
 from app.persistence.repository import LedgerRepository
 
-# Milestone 4 has no authentication. This internal user satisfies the approved
-# recording-actor contract without presenting a caller as an authenticated user.
-DEVELOPMENT_ACTOR = User(
-    id=UUID("f2c34ceb-dc48-4de7-8fe0-5820e5f2be4d"),
-    email="local-development@triptab.invalid",
-    display_name="TripTab local development",
-)
-
 
 class ResourceNotFound(Exception):
     """A resource is absent from the requested group scope."""
@@ -46,15 +39,32 @@ class FinancialConflict(Exception):
 
 
 class TripTabService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, current_user: User) -> None:
+        self.current_user = current_user
         self.session = session
         self.repo = LedgerRepository(session)
 
-    def _ensure_actor(self) -> None:
-        if self.repo.get_user(DEVELOPMENT_ACTOR.id) is None:
-            self.repo.save_user(DEVELOPMENT_ACTOR)
+    def _membership(self, group_id: UUID) -> GroupMember:
+        member = self.repo.get_membership(group_id, self.current_user.id)
+        if member is None:
+            raise ResourceNotFound("group not found")
+        return member
+
+    def _require_owner(self, group_id: UUID) -> None:
+        if self._membership(group_id).role != "owner":
+            raise PermissionDenied("only the group owner may add travelers")
+
+    def _require_record_author(self, group_id: UUID, author_id: UUID) -> None:
+        if (
+            self._membership(group_id).role != "owner"
+            and author_id != self.current_user.id
+        ):
+            raise PermissionDenied(
+                "only the recording author or group owner may change this record"
+            )
 
     def _group(self, group_id: UUID) -> Group:
+        self._membership(group_id)
         group = self.repo.get_group(group_id)
         if group is None:
             raise ResourceNotFound("group not found")
@@ -64,10 +74,19 @@ class TripTabService:
         group = Group(id=uuid4(), name=name)
         with self.session.begin():
             self.repo.save_group(group)
+            self.repo.save_member(
+                GroupMember(
+                    id=uuid4(),
+                    group_id=group.id,
+                    display_name=self.current_user.display_name,
+                    user_id=self.current_user.id,
+                    role="owner",
+                )
+            )
         return group
 
     def list_groups(self) -> tuple[Group, ...]:
-        return self.repo.list_groups()
+        return self.repo.list_groups(self.current_user.id)
 
     def get_group(self, group_id: UUID) -> Group:
         return self._group(group_id)
@@ -76,6 +95,7 @@ class TripTabService:
         member = GroupMember(id=uuid4(), group_id=group_id, display_name=display_name)
         with self.session.begin():
             self._group(group_id)
+            self._require_owner(group_id)
             self.repo.save_member(member)
         return member
 
@@ -131,7 +151,6 @@ class TripTabService:
             allocations = validate_exact_splits(amount, splits)
         if any(split.member_id not in member_ids for split in allocations):
             raise ResourceNotFound("participant member not found in group")
-        self._ensure_actor()
         expense = Expense(
             id=uuid4(),
             group_id=group_id,
@@ -142,7 +161,7 @@ class TripTabService:
             splits=allocations,
             occurred_at=occurred_at.astimezone(UTC),
             created_at=datetime.now(UTC),
-            created_by_user_id=DEVELOPMENT_ACTOR.id,
+            created_by_user_id=self.current_user.id,
         )
         self.repo.save_expense(expense)
         return expense
@@ -213,6 +232,14 @@ class TripTabService:
             raise ResourceNotFound("sender member not found in group")
         if to_member_id not in member_ids:
             raise ResourceNotFound("recipient member not found in group")
+        membership = self._membership(group_id)
+        if membership.role != "owner" and membership.id not in {
+            from_member_id,
+            to_member_id,
+        }:
+            raise PermissionDenied(
+                "only sender, recipient, or group owner may record a payment"
+            )
         settlement = Settlement(
             id=uuid4(),
             group_id=group_id,
@@ -221,9 +248,8 @@ class TripTabService:
             amount_minor=amount,
             occurred_at=occurred_at.astimezone(UTC),
             created_at=datetime.now(UTC),
-            created_by_user_id=DEVELOPMENT_ACTOR.id,
+            created_by_user_id=self.current_user.id,
         )
-        self._ensure_actor()
         # The existing repository runs contextual validation before flushing.
         self.repo.save_settlement(settlement)
         return settlement
@@ -276,7 +302,7 @@ class TripTabService:
                     group_id,
                     reason,
                     datetime.now(UTC),
-                    DEVELOPMENT_ACTOR.id,
+                    self.current_user.id,
                     replacement.id,
                 )
             )
@@ -303,7 +329,7 @@ class TripTabService:
                     group_id,
                     reason,
                     datetime.now(UTC),
-                    DEVELOPMENT_ACTOR.id,
+                    self.current_user.id,
                     replacement.id,
                 )
             )
@@ -328,6 +354,7 @@ class TripTabService:
         record = self.repo.get_expense(target_id)
         if record is None or record.group_id != group_id:
             raise ResourceNotFound("expense not found in group")
+        self._require_record_author(group_id, record.created_by_user_id)
         if self.repo.get_expense_void(target_id) is not None:
             raise FinancialConflict("expense already voided or corrected")
         return record
@@ -335,14 +362,14 @@ class TripTabService:
     def void_expense(self, group_id: UUID, target_id: UUID, reason: str) -> ExpenseVoid:
         with self._financial_transaction():
             self._active_expense(group_id, target_id)
-            self._ensure_actor()
             void = ExpenseVoid(
-                target_id, group_id, reason, datetime.now(UTC), DEVELOPMENT_ACTOR.id
+                target_id, group_id, reason, datetime.now(UTC), self.current_user.id
             )
             self.repo.save_expense_void(void)
             return void
 
     def expense_audit(self, group_id: UUID) -> dict[UUID, dict]:
+        self._group(group_id)
         audit: dict[UUID, dict] = {}
         for void in self.repo.list_expense_voids(group_id):
             audit.setdefault(void.expense_id, {}).update(
@@ -363,6 +390,7 @@ class TripTabService:
         record = self.repo.get_settlement(target_id)
         if record is None or record.group_id != group_id:
             raise ResourceNotFound("settlement not found in group")
+        self._require_record_author(group_id, record.created_by_user_id)
         if self.repo.get_settlement_void(target_id) is not None:
             raise FinancialConflict("settlement already voided or corrected")
         return record
@@ -372,14 +400,14 @@ class TripTabService:
     ) -> SettlementVoid:
         with self._financial_transaction():
             self._active_settlement(group_id, target_id)
-            self._ensure_actor()
             void = SettlementVoid(
-                target_id, group_id, reason, datetime.now(UTC), DEVELOPMENT_ACTOR.id
+                target_id, group_id, reason, datetime.now(UTC), self.current_user.id
             )
             self.repo.save_settlement_void(void)
             return void
 
     def settlement_audit(self, group_id: UUID) -> dict[UUID, dict]:
+        self._group(group_id)
         audit: dict[UUID, dict] = {}
         for void in self.repo.list_settlement_voids(group_id):
             audit.setdefault(void.settlement_id, {}).update(

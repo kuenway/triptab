@@ -1,6 +1,5 @@
 """Exercise the public API through FastAPI, PostgreSQL, and accounting."""
 
-from collections.abc import Iterator
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -9,33 +8,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_session
-from app.application.service import DEVELOPMENT_ACTOR
 from app.domain import Settlement
-from app.main import app
 from app.persistence.models import UserRow
 from app.persistence.repository import LedgerRepository
 
 pytestmark = pytest.mark.integration
 OCCURRED = "2026-10-02T20:00:00+08:00"
-
-
-@pytest.fixture
-def client(db_session: Session) -> Iterator[TestClient]:
-    connection = db_session.connection()
-
-    def test_session() -> Iterator[Session]:
-        with Session(
-            bind=connection, join_transaction_mode="create_savepoint"
-        ) as session:
-            yield session
-
-    app.dependency_overrides[get_session] = test_session
-    try:
-        with TestClient(app) as test_client:
-            yield test_client
-    finally:
-        app.dependency_overrides.pop(get_session, None)
 
 
 def group(client: TestClient, name: str = "Trip") -> dict:
@@ -45,6 +23,12 @@ def group(client: TestClient, name: str = "Trip") -> dict:
 
 
 def member(client: TestClient, group_id: str, name: str) -> dict:
+    if name == "Alice":
+        return next(
+            item
+            for item in client.get(f"/api/v1/groups/{group_id}/members").json()
+            if item["role"] == "owner"
+        )
     response = client.post(
         f"/api/v1/groups/{group_id}/members", json={"display_name": name}
     )
@@ -98,10 +82,13 @@ def test_group_create_list_get_and_missing(client: TestClient) -> None:
 def test_guest_members_are_scoped_to_group(client: TestClient) -> None:
     first = group(client)
     second = group(client, "Other")
-    alice = member(client, first["id"], "Alice")
+    alice = member(client, first["id"], "Guest Alice")
     member(client, second["id"], "Bob")
     assert alice["user_id"] is None
-    assert client.get(f"/api/v1/groups/{first['id']}/members").json() == [alice]
+    listed = client.get(f"/api/v1/groups/{first['id']}/members").json()
+    assert alice in listed
+    assert len(listed) == 2
+    assert any(item["role"] == "owner" for item in listed)
     assert client.get(f"/api/v1/groups/{uuid4()}/members").status_code == 404
     assert (
         client.post(
@@ -312,7 +299,7 @@ def test_invalid_transport_values_and_missing_group(client: TestClient) -> None:
     assert client.get(base).json() == []
 
 
-def test_invalid_expense_does_not_persist_actor_or_history(
+def test_invalid_expense_preserves_account_and_creates_no_history(
     client: TestClient, db_session: Session
 ) -> None:
     trip = group(client)
@@ -323,7 +310,12 @@ def test_invalid_expense_does_not_persist_actor_or_history(
         == 422
     )
     assert client.get(f"/api/v1/groups/{trip['id']}/expenses").json() == []
-    assert db_session.get(UserRow, DEVELOPMENT_ACTOR.id) is None
+    assert (
+        db_session.get(
+            UserRow, UUID(client.get("/api/v1/auth/me").json()["user"]["id"])
+        )
+        is not None
+    )
 
 
 def test_uuid_paths_reject_malformed_ids(client: TestClient) -> None:
@@ -410,7 +402,14 @@ def test_multiple_payer_suggestions_are_deterministic_and_group_scoped(
     assert response.status_code == 201, response.text
 
     current = balances(client, trip["id"])
-    assert current == {ids[0]: 525, ids[1]: 225, ids[2]: -375, ids[3]: -375}
+    owner = member(client, trip["id"], "Alice")
+    assert current == {
+        ids[0]: 525,
+        ids[1]: 225,
+        ids[2]: -375,
+        ids[3]: -375,
+        owner["id"]: 0,
+    }
     path = f"/api/v1/groups/{trip['id']}/settlement-suggestions"
     response = client.get(path)
     assert response.status_code == 200, response.text
@@ -492,7 +491,7 @@ def test_settlement_creation_round_trip_and_balance_refresh(
         amount_minor=300,
         occurred_at=datetime.fromisoformat(OCCURRED),
         created_at=datetime.fromisoformat(payment["created_at"]),
-        created_by_user_id=DEVELOPMENT_ACTOR.id,
+        created_by_user_id=UUID(client.get("/api/v1/auth/me").json()["user"]["id"]),
     )
     assert client.get(f"{base}/settlements").json() == [payment]
     assert balances(client, trip["id"]) == {
@@ -547,7 +546,12 @@ def test_settlement_invalid_amounts_leave_no_history(
         == 422
     )
     assert client.get(base).json() == []
-    assert db_session.get(UserRow, DEVELOPMENT_ACTOR.id) is None
+    assert (
+        db_session.get(
+            UserRow, UUID(client.get("/api/v1/auth/me").json()["user"]["id"])
+        )
+        is not None
+    )
 
 
 def test_settlement_transport_and_same_member_validation(client: TestClient) -> None:
@@ -627,7 +631,7 @@ def test_multiple_payments_history_order_and_stale_suggestion(
     assert client.get(f"/api/v1/groups/{other['id']}/settlements").json() == []
 
 
-def test_failed_settlement_flush_rolls_back_payment_and_actor(
+def test_failed_settlement_flush_rolls_back_payment_and_preserves_account(
     client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     trip = group(client)
@@ -648,7 +652,12 @@ def test_failed_settlement_flush_rolls_back_payment_and_actor(
     assert response.status_code == 422
     assert response.json() == {"detail": "database constraint violation"}
     assert client.get(f"/api/v1/groups/{trip['id']}/settlements").json() == []
-    assert db_session.get(UserRow, DEVELOPMENT_ACTOR.id) is None
+    assert (
+        db_session.get(
+            UserRow, UUID(client.get("/api/v1/auth/me").json()["user"]["id"])
+        )
+        is not None
+    )
     assert balances(client, trip["id"]) == {alice["id"]: 0, bob["id"]: 0}
 
 
@@ -677,7 +686,9 @@ def test_expense_void_keeps_original_and_restores_empty_ledger(client, correctio
     voided = response.json()
     assert voided["status"] == "voided"
     assert voided["void_reason"] == "Wrong receipt"
-    assert voided["void_created_by_user_id"] == str(DEVELOPMENT_ACTOR.id)
+    assert voided["void_created_by_user_id"] == str(
+        UUID(client.get("/api/v1/auth/me").json()["user"]["id"])
+    )
     assert voided["void_created_at"]
     assert voided["amount"] == original["amount"]
     assert voided["splits"] == original["splits"]
@@ -778,7 +789,9 @@ def test_settlement_void_restores_pre_payment_balances(client, correction_trip):
     assert voided["status"] == "voided"
     assert voided["amount"] == 300
     assert voided["created_at"] == original["created_at"]
-    assert voided["void_created_by_user_id"] == str(DEVELOPMENT_ACTOR.id)
+    assert voided["void_created_by_user_id"] == str(
+        UUID(client.get("/api/v1/auth/me").json()["user"]["id"])
+    )
     assert client.get(path).json() == [voided]
     assert balances(client, gid) == dict(zip(ids, (600, -300, -300), strict=True))
     assert sorted(

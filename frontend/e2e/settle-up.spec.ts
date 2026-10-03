@@ -1,17 +1,29 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, Page } from "@playwright/test";
+
+async function register(page: Page, name: string) {
+  const email = `${name.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
+  await page.goto("/register");
+  await page.getByLabel("Display name").fill(name);
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill("TripTab test password 123");
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+  await expect(page.getByLabel("Trip name")).toBeVisible();
+  return email;
+}
 
 test("records Bob's real payment and refreshes the trip", async ({ page }) => {
-  await page.goto("/");
+  const email = await register(page, "Alice");
   await page.getByLabel("Trip name").fill(`Settle-up smoke ${Date.now()}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
 
   const travelers = page.getByRole("region", { name: "Travelers", exact: true });
-  for (const name of ["Alice", "Bob", "Charlie"]) {
+  for (const name of ["Bob", "Charlie"]) {
     await travelers.getByLabel("Traveler name").fill(name);
     await travelers.getByRole("button", { name: "Add traveler" }).click();
     await expect(travelers.locator(".traveler-row").filter({ hasText: name })).toBeVisible();
   }
+  await expect(travelers.locator(".traveler-row").filter({ hasText: "Alice" })).toContainText("Owner");
   const expense = page.getByRole("region", { name: "Add an expense", exact: true });
   await expense.getByLabel("Description").fill("Dinner");
   await expense.getByLabel("Amount (NT$)").fill("900");
@@ -41,15 +53,28 @@ test("records Bob's real payment and refreshes the trip", async ({ page }) => {
   await page.reload();
   await expect(history).toContainText("Bob paid Alice");
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("settled");
+  const tripUrl = page.url();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.goto(tripUrl);
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill("TripTab test password 123");
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByLabel("Trip name")).toBeVisible();
+  await page.goto(tripUrl);
+  await expect(history).toContainText("Bob paid Alice");
+  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("settled");
+
 });
 
 test("corrects an expense while preserving auditable history", async ({ page }) => {
-  await page.goto("/");
+  await register(page, "Alice");
   await page.getByLabel("Trip name").fill(`Correction smoke ${Date.now()}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
   const travelers = page.getByRole("region", { name: "Travelers", exact: true });
-  for (const name of ["Alice", "Bob", "Charlie"]) {
+  for (const name of ["Bob", "Charlie"]) {
     await travelers.getByLabel("Traveler name").fill(name);
     await travelers.getByRole("button", { name: "Add traveler" }).click();
     await expect(travelers.locator(".traveler-row").filter({ hasText: name })).toBeVisible();
@@ -84,4 +109,20 @@ test("corrects an expense while preserving auditable history", async ({ page }) 
   await page.reload();
   await expect(original).toContainText("Voided");
   await expect(replacement).toContainText("Active");
+});
+
+
+test("a second account cannot open another account's private trip", async ({ page }) => {
+  await register(page, "Alice");
+  await page.getByLabel("Trip name").fill(`Private trip ${Date.now()}`);
+  await page.getByRole("button", { name: "Create trip" }).click();
+  await expect(page).toHaveURL(/\/trips\/[^/]+$/);
+  const tripUrl = page.url();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await register(page, "Bob");
+  await expect(page.getByText("No trips yet")).toBeVisible();
+  await page.goto(tripUrl);
+  await expect(page.getByText("We couldn’t find that trip.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Expense history", exact: true })).toHaveCount(0);
 });

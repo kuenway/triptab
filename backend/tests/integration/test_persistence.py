@@ -40,7 +40,11 @@ def seed_group(session: Session) -> tuple[User, Group, tuple[GroupMember, ...]]:
     group = Group(id=uuid4(), name="Trip")
     members = (
         GroupMember(
-            id=uuid4(), group_id=group.id, display_name="Alice", user_id=user.id
+            id=uuid4(),
+            group_id=group.id,
+            display_name="Alice",
+            user_id=user.id,
+            role="owner",
         ),
         GroupMember(id=uuid4(), group_id=group.id, display_name="Bob"),
         GroupMember(id=uuid4(), group_id=group.id, display_name="Carol"),
@@ -486,10 +490,10 @@ def test_void_database_integrity(db_session, kind, violation):
 
 @pytest.mark.parametrize("kind", ["expense", "settlement"])
 @pytest.mark.parametrize("operation", ["void", "correction"])
-def test_failed_financial_change_rolls_back_new_development_actor(
+def test_failed_financial_change_preserves_authenticated_actor(
     db_session, monkeypatch, kind, operation
 ):
-    from app.application.service import DEVELOPMENT_ACTOR, TripTabService
+    from app.application.service import TripTabService
 
     with db_session.begin():
         user, group, members = seed_group(db_session)
@@ -506,7 +510,7 @@ def test_failed_financial_change_rolls_back_new_development_actor(
         raise IntegrityError("forced failure", {}, Exception("rollback"))
 
     monkeypatch.setattr(LedgerRepository, f"save_{kind}_void", fail_after_flush)
-    service = TripTabService(db_session)
+    service = TripTabService(db_session, user)
     with pytest.raises(IntegrityError):
         if operation == "void":
             getattr(service, f"void_{kind}")(group.id, original.id, "Wrong event")
@@ -533,7 +537,7 @@ def test_failed_financial_change_rolls_back_new_development_actor(
                 OCCURRED,
             )
     repo = LedgerRepository(db_session)
-    assert repo.get_user(DEVELOPMENT_ACTOR.id) is None
+    assert repo.get_user(user.id) == user
     assert getattr(repo, f"get_{kind}_void")(original.id) is None
     assert [item.id for item in getattr(repo, f"list_{kind}s")(group.id)] == [
         original.id

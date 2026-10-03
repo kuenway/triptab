@@ -40,6 +40,7 @@ def member_from_row(row: GroupMemberRow) -> GroupMember:
         id=row.id,
         group_id=row.group_id,
         user_id=row.user_id,
+        role=row.role,
         display_name=row.display_name,
     )
 

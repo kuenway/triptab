@@ -6,6 +6,8 @@ import { api, ApiError, Settlement, SettlementSuggestions, Traveler } from "../l
 
 import { AuditDetails, FinancialActions, localDateTime } from "./financial-history";
 
+import { useAuth } from "./auth";
+
 type Suggestion = SettlementSuggestions["suggestions"][number];
 const money = (amount: number) => `NT$${new Intl.NumberFormat("en-US").format(amount)}`;
 
@@ -109,13 +111,15 @@ export function SuggestedPayments({ tripId, travelers, suggestions, onRecorded }
   onRecorded: () => Promise<void>;
 }) {
   const [selected, setSelected] = useState<Suggestion | null>(null);
+  const { user } = useAuth();
+  const membership = travelers.find((traveler) => traveler.user_id === user?.id);
   if (suggestions.suggestions.length === 0) return <p className="muted">Everyone is settled up.</p>;
   return (
     <div className="balance-list">
       {suggestions.suggestions.map((suggestion) => (
         <div className="suggestion-item" key={`${suggestion.from_member_id}-${suggestion.to_member_id}`}>
           <div className="section-heading"><span className="person-name">{suggestion.from_display_name} → {suggestion.to_display_name}</span><span className="balance-value">{money(suggestion.amount)}</span></div>
-          <button type="button" className="payment-button" disabled={selected !== null} onClick={() => setSelected(suggestion)}>Mark as paid</button>
+          {membership && (membership.role === "owner" || [suggestion.from_member_id, suggestion.to_member_id].includes(membership.id)) ? <button type="button" className="payment-button" disabled={selected !== null} onClick={() => setSelected(suggestion)}>Mark as paid</button> : null}
         </div>
       ))}
       {selected ? <div className="confirmation-panel" role="group" aria-labelledby="payment-confirmation-heading">
@@ -127,12 +131,14 @@ export function SuggestedPayments({ tripId, travelers, suggestions, onRecorded }
 }
 
 export function PaymentHistory({ payments, travelers = [], tripId, onChanged }: { payments: Settlement[]; travelers?: Traveler[]; tripId?: string; onChanged?: () => Promise<void> }) {
+  const { user } = useAuth();
+  const owner = travelers.some((traveler) => traveler.user_id === user?.id && traveler.role === "owner");
   if (payments.length === 0) return <p className="muted">No payments recorded yet.</p>;
   return <div className="expense-list">{payments.map((payment) => (
     <article className="expense-item" id={`payment-${payment.id}`} key={payment.id}>
       <div className="expense-topline"><div><h3>{payment.from_display_name} paid {payment.to_display_name}</h3><p className="muted">{new Date(payment.occurred_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</p></div><strong className="expense-amount">{money(payment.amount)}</strong></div>
       <AuditDetails record={payment} kind="payment" />
-      {tripId && onChanged ? <FinancialActions tripId={tripId} record={payment} kind="payment" onChanged={onChanged} correction={(close) => <PaymentForm tripId={tripId} travelers={travelers} initialPayment={payment} onCancel={close} onRecorded={async () => { await onChanged(); close(); }} />} /> : null}
+      {tripId && onChanged && (owner || payment.created_by_user_id === user?.id) ? <FinancialActions tripId={tripId} record={payment} kind="payment" onChanged={onChanged} correction={(close) => <PaymentForm tripId={tripId} travelers={travelers} initialPayment={payment} onCancel={close} onRecorded={async () => { await onChanged(); close(); }} />} /> : null}
     </article>
   ))}</div>;
 }

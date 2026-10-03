@@ -1,14 +1,16 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
+
+import { AuthProvider, AuthForm, AccountMenu, RequireAuth } from "../components/auth";
 
 import Home from "../app/page";
 import { BalanceList, ExpenseForm, ExpenseHistory, TravelerForm, TripDashboard } from "../components/trip-dashboard";
 import { PaymentForm, PaymentHistory, SuggestedPayments } from "../components/payments";
 import { api, ApiError, Expense, Settlement, SettlementSuggestions, Traveler, Trip } from "../lib/api";
 
-const { push } = vi.hoisted(() => ({ push: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+const { push, replace } = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace }) }));
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a> }));
 vi.mock("../lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("../lib/api")>();
@@ -18,14 +20,18 @@ vi.mock("../lib/api", async (importOriginal) => {
   };
 });
 
+const currentUser = { id: "alice-user", email: "alice@example.com", display_name: "Alice", created_at: "2026-10-03T09:00:00Z" };
+const authState = { user: currentUser, csrf_token: "csrf-token" };
+function render(ui: ReactNode) { return rtlRender(<AuthProvider>{ui}</AuthProvider>); }
+
 const trip: Trip = { id: "trip-1", name: "Tokyo Weekend", currency: "TWD", currency_scale: 0 };
 const travelers: Traveler[] = [
-  { id: "alice", group_id: trip.id, display_name: "Alice", user_id: null },
-  { id: "bob", group_id: trip.id, display_name: "Bob", user_id: null },
-  { id: "charlie", group_id: trip.id, display_name: "Charlie", user_id: null },
+  { id: "alice", group_id: trip.id, display_name: "Alice", user_id: currentUser.id, role: "owner" },
+  { id: "bob", group_id: trip.id, display_name: "Bob", user_id: null, role: "member" },
+  { id: "charlie", group_id: trip.id, display_name: "Charlie", user_id: null, role: "member" },
 ];
 const expense: Expense = {
-  status: "active", id: "expense-1", group_id: trip.id, description: "Dinner", amount: 900,
+  created_by_user_id: currentUser.id, status: "active", id: "expense-1", group_id: trip.id, description: "Dinner", amount: 900,
   payer_member_id: "alice", split_strategy: "equal",
   splits: travelers.map((traveler) => ({ member_id: traveler.id, amount: 300 })),
   occurred_at: "2026-10-03T10:00:00Z", created_at: "2026-10-03T11:00:00Z",
@@ -33,6 +39,8 @@ const expense: Expense = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(api.getMe).mockResolvedValue(authState);
+  vi.mocked(api.logout).mockResolvedValue(undefined);
   vi.mocked(api.getSettlementSuggestions).mockResolvedValue({ group_id: trip.id, currency: "TWD", suggestions: [] });
   vi.mocked(api.listSettlements).mockResolvedValue([]);
 });
@@ -53,7 +61,7 @@ it("creates a trip and navigates to it", async () => {
   vi.mocked(api.listTrips).mockResolvedValue([]);
   vi.mocked(api.createTrip).mockResolvedValue(trip);
   render(<Home />);
-  fireEvent.change(screen.getByLabelText("Trip name"), { target: { value: "Tokyo Weekend" } });
+  fireEvent.change(await screen.findByLabelText("Trip name"), { target: { value: "Tokyo Weekend" } });
   fireEvent.click(screen.getByRole("button", { name: "Create trip" }));
   await waitFor(() => expect(api.createTrip).toHaveBeenCalledWith("Tokyo Weekend"));
   await waitFor(() => expect(push).toHaveBeenCalledWith("/trips/trip-1"));
@@ -63,7 +71,7 @@ it("shows a create-trip API error beside the form", async () => {
   vi.mocked(api.listTrips).mockResolvedValue([]);
   vi.mocked(api.createTrip).mockRejectedValue(new ApiError("Trip could not be saved.", 422));
   render(<Home />);
-  fireEvent.change(screen.getByLabelText("Trip name"), { target: { value: "Tokyo Weekend" } });
+  fireEvent.change(await screen.findByLabelText("Trip name"), { target: { value: "Tokyo Weekend" } });
   fireEvent.click(screen.getByRole("button", { name: "Create trip" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Trip could not be saved.");
 });
@@ -151,7 +159,7 @@ const suggestions: SettlementSuggestions = {
   ],
 };
 
-it.each([1, 2])("renders %i suggested payments with names and whole TWD amounts", (count) => {
+it.each([1, 2])("renders %i suggested payments with names and whole TWD amounts", async (count) => {
   render(<SuggestedPayments tripId={trip.id} travelers={travelers} onRecorded={vi.fn().mockResolvedValue(undefined)} suggestions={{ ...suggestions, suggestions: suggestions.suggestions.slice(0, count) }} />);
   expect(screen.getByText("Bob → Alice")).toBeTruthy();
   expect(screen.getByText("NT$1,234")).toBeTruthy();
@@ -159,7 +167,7 @@ it.each([1, 2])("renders %i suggested payments with names and whole TWD amounts"
     expect(screen.getByText("Charlie → Alice")).toBeTruthy();
     expect(screen.getByText("NT$300")).toBeTruthy();
   }
-  expect(screen.getAllByRole("button", { name: "Mark as paid" })).toHaveLength(count);
+  expect(await screen.findAllByRole("button", { name: "Mark as paid" })).toHaveLength(count);
   expect(screen.queryByRole("checkbox")).toBeNull();
 });
 
@@ -210,15 +218,15 @@ it("refreshes suggestions from the backend after an expense is saved", async () 
 });
 
 const payment: Settlement = {
-  status: "active", id: "payment-1", group_id: trip.id,
+  created_by_user_id: currentUser.id, status: "active", id: "payment-1", group_id: trip.id,
   from_member_id: "bob", from_display_name: "Bob",
   to_member_id: "alice", to_display_name: "Alice", amount: 300,
   occurred_at: "2026-10-03T12:30:00Z", created_at: "2026-10-03T12:31:00Z",
 };
 
-it("requires explicit confirmation and supports cancelling a suggested payment", () => {
+it("requires explicit confirmation and supports cancelling a suggested payment", async () => {
   render(<SuggestedPayments tripId={trip.id} travelers={travelers} suggestions={suggestions} onRecorded={vi.fn().mockResolvedValue(undefined)} />);
-  fireEvent.click(screen.getAllByRole("button", { name: "Mark as paid" })[0]);
+  fireEvent.click((await screen.findAllByRole("button", { name: "Mark as paid" }))[0]);
   const confirmation = screen.getByRole("group", { name: "Record payment?" });
   expect(within(confirmation).getByText(/This records that Bob paid Alice NT\$1,234 outside TripTab/)).toBeTruthy();
   expect(within(confirmation).getByText("TripTab does not transfer money.")).toBeTruthy();
@@ -233,7 +241,7 @@ it("records a suggestion once while pending and waits for the authoritative refr
   vi.mocked(api.recordSettlement).mockReturnValue(new Promise((resolve) => { resolvePayment = resolve; }));
   const onRecorded = vi.fn().mockResolvedValue(undefined);
   render(<SuggestedPayments tripId={trip.id} travelers={travelers} suggestions={suggestions} onRecorded={onRecorded} />);
-  fireEvent.click(screen.getAllByRole("button", { name: "Mark as paid" })[0]);
+  fireEvent.click((await screen.findAllByRole("button", { name: "Mark as paid" }))[0]);
   const confirmation = screen.getByRole("group", { name: "Record payment?" });
   fireEvent.change(within(confirmation).getByLabelText("When did the payment happen?"), { target: { value: "2026-10-03T12:30" } });
   const form = within(confirmation).getByRole("button", { name: "Record payment" }).closest("form")!;
@@ -326,7 +334,7 @@ it("refreshes backend balances, suggestions and history after confirming a payme
   vi.mocked(api.recordSettlement).mockResolvedValue(payment);
   render(<TripDashboard tripId={trip.id} />);
   await screen.findByText("Bob → Alice");
-  fireEvent.click(screen.getAllByRole("button", { name: "Mark as paid" })[0]);
+  fireEvent.click((await screen.findAllByRole("button", { name: "Mark as paid" }))[0]);
   fireEvent.click(within(screen.getByRole("group", { name: "Record payment?" })).getByRole("button", { name: "Record payment" }));
   expect(await screen.findByRole("heading", { name: "Bob paid Alice" })).toBeTruthy();
   expect(screen.getByText("gets back NT$300")).toBeTruthy();
@@ -353,7 +361,7 @@ it.each(["expense", "payment"] as const)("prepopulates %s correction and sends a
   vi.mocked(api.correctSettlement).mockResolvedValue({ ...payment, id: "replacement", amount: 200 });
   if (kind === "expense") render(<ExpenseHistory expenses={[expense]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
   else render(<PaymentHistory payments={[payment]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
-  fireEvent.click(screen.getByRole("button", { name: "Correct" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Correct" }));
   const editor = within(screen.getByRole("group", { name: `Correct ${kind}` }));
   expect(editor.getByText(/original .* will remain in history and will be marked void/)).toBeTruthy();
   if (kind === "expense") {
@@ -450,9 +458,9 @@ it.each([
   vi.mocked(method).mockRejectedValue(error);
   if (kind === "expense") render(<ExpenseHistory expenses={[expense]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
   else render(<PaymentHistory payments={[payment]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
-  fireEvent.click(screen.getByRole("button", { name: operation === "void" ? "Void" : "Correct" }));
+  fireEvent.click(await screen.findByRole("button", { name: operation === "void" ? "Void" : "Correct" }));
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Fix" } });
-  fireEvent.click(screen.getByRole("button", { name: operation === "void" ? `Confirm void ${kind}` : "Save correction" }));
+  fireEvent.click(await screen.findByRole("button", { name: operation === "void" ? `Confirm void ${kind}` : "Save correction" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", error.message);
   expect(onChanged).not.toHaveBeenCalled();
 });
@@ -469,4 +477,100 @@ it.each(["expense", "payment"] as const)("preserves untouched %s timestamps incl
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Description correction" } });
   fireEvent.click(screen.getByRole("button", { name: "Save correction" }));
   await waitFor(() => expect(kind === "expense" ? api.correctExpense : api.correctSettlement).toHaveBeenCalledWith(trip.id, kind === "expense" ? expense.id : payment.id, "Description correction", expect.objectContaining({ occurred_at })));
+});
+
+it.each(["register", "login"] as const)("submits the %s form and opens the authenticated trip list", async (mode) => {
+  vi.mocked(api.register).mockResolvedValue(authState);
+  vi.mocked(api.login).mockResolvedValue(authState);
+  render(<AuthForm mode={mode} />);
+  const button = screen.getByRole("button", { name: mode === "register" ? "Register" : "Log in" });
+  await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+  if (mode === "register") fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Alice" } });
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "alice@example.com" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Secret password 123" } });
+  fireEvent.click(button);
+  await waitFor(() => expect(mode === "register" ? api.register : api.login).toHaveBeenCalledWith("alice@example.com", "Secret password 123", ...(mode === "register" ? ["Alice"] : [])));
+  expect(screen.getByLabelText("Password")).toHaveProperty("value", "");
+  expect(push).toHaveBeenCalledWith("/");
+});
+
+it.each(["register", "login"] as const)("shows %s authentication errors without retaining the password", async (mode) => {
+  const message = mode === "register" ? "account already registered" : "invalid email or password";
+  vi.mocked(api.register).mockRejectedValue(new ApiError(message, 409));
+  vi.mocked(api.login).mockRejectedValue(new ApiError(message, 401));
+  render(<AuthForm mode={mode} />);
+  const button = screen.getByRole("button", { name: mode === "register" ? "Register" : "Log in" });
+  await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "alice@example.com" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Wrong password 123" } });
+  if (mode === "register") fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Alice" } });
+  fireEvent.click(button);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", message);
+  expect(screen.getByLabelText("Password")).toHaveProperty("value", "");
+});
+
+it("waits for current-user loading before reading private trips", async () => {
+  let resolve!: (value: typeof authState) => void;
+  vi.mocked(api.getMe).mockReturnValue(new Promise((done) => { resolve = done; }));
+  vi.mocked(api.listTrips).mockResolvedValue([trip]);
+  render(<Home />);
+  expect(screen.getByRole("status")).toHaveProperty("textContent", "Checking sign-in…");
+  expect(api.listTrips).not.toHaveBeenCalled();
+  resolve(authState);
+  expect(await screen.findByRole("link", { name: /Tokyo Weekend/ })).toBeTruthy();
+});
+
+it("directs logged-out users to login without reading private trips", async () => {
+  vi.mocked(api.getMe).mockRejectedValue(new ApiError("sign in required", 401));
+  render(<Home />);
+  await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+  expect(api.listTrips).not.toHaveBeenCalled();
+  expect(screen.queryByText("Tokyo Weekend")).toBeNull();
+});
+
+it("logs out and removes protected content", async () => {
+  render(<RequireAuth><AccountMenu /><p>Private content</p></RequireAuth>);
+  fireEvent.click(await screen.findByRole("button", { name: "Log out" }));
+  await waitFor(() => expect(api.logout).toHaveBeenCalledOnce());
+  await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+  expect(screen.queryByText("Private content")).toBeNull();
+});
+
+it("removes private content on session expiration", async () => {
+  render(<RequireAuth><p>Private content</p></RequireAuth>);
+  expect(await screen.findByText("Private content")).toBeTruthy();
+  fireEvent(window, new Event("triptab:auth-expired"));
+  await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+  expect(screen.queryByText("Private content")).toBeNull();
+});
+
+it("shows authentication connectivity errors without claiming the user is logged out", async () => {
+  vi.mocked(api.getMe).mockRejectedValueOnce(new ApiError("Backend unavailable", 0)).mockResolvedValueOnce(authState);
+  vi.mocked(api.listTrips).mockResolvedValue([]);
+  render(<Home />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Backend unavailable");
+  expect(replace).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Retry sign-in check" }));
+  expect(await screen.findByText("No trips yet")).toBeTruthy();
+});
+
+it("shows owner and guest roles and hides owner-only actions from normal members", async () => {
+  mockDashboard();
+  vi.mocked(api.getMe).mockResolvedValue({ ...authState, user: { ...currentUser, id: "bob-user", display_name: "Bob" } });
+  vi.mocked(api.listTravelers).mockResolvedValue(travelers.map((traveler) => traveler.id === "bob" ? { ...traveler, user_id: "bob-user" } : traveler));
+  render(<TripDashboard tripId={trip.id} />);
+  const region = within(await screen.findByRole("region", { name: "Travelers" }));
+  expect(region.getByText("Owner")).toBeTruthy();
+  expect(region.getByText("Member")).toBeTruthy();
+  expect(region.getByText("Guest")).toBeTruthy();
+  expect(region.queryByRole("button", { name: "Add traveler" })).toBeNull();
+  expect(within(screen.getByRole("region", { name: "Expense history" })).queryByRole("button", { name: "Correct" })).toBeNull();
+});
+
+it("shows an accessible-operation permission error from the API", async () => {
+  vi.mocked(api.recordSettlement).mockRejectedValue(new ApiError("only sender, recipient, or group owner may record a payment", 403));
+  render(<PaymentForm tripId={trip.id} travelers={travelers} onRecorded={vi.fn().mockResolvedValue(undefined)} />);
+  fillPayment();
+  fireEvent.click(screen.getByRole("button", { name: "Record payment" }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "only sender, recipient, or group owner may record a payment");
 });

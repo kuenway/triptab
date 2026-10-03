@@ -25,8 +25,8 @@ algorithm is not duplicated in SQL.
 
 The repository root `.env.example` contains development-only connection values.
 Copy it to `.env` if this is a new checkout, or add its `DATABASE_URL` and
-`TEST_DATABASE_URL` entries to an existing `.env`. Start PostgreSQL and migrate
-the development database:
+`TEST_DATABASE_URL` and local authentication settings to an existing `.env`.
+Start PostgreSQL and migrate the development database:
 
 ```sh
 cp .env.example .env
@@ -112,8 +112,36 @@ All paths below start with `/api/v1/groups/{group_id}`:
 Expense replacement bodies retain the Equal/Exact discriminator and full creation
 fields. Settlement replacement bodies include sender, recipient, positive integer
 NTD amount, and aware `occurred_at`. Partial edits and extra fields are rejected.
-Missing or cross-group targets return 404, an already-voided target returns 409,
-and invalid financial values or a blank reason return 422. Referenced missing or
-cross-group travelers follow existing creation conventions (404). These additions
+Authentication and group membership are required. Original recording authors and
+owners may void or correct; replacement payments must also satisfy payment
+recording permissions. Missing or cross-group targets return 404, an already-voided
+target returns 409, and invalid financial values or a blank reason return 422.
+Referenced missing or cross-group travelers follow existing creation conventions (404). These additions
 retain existing response fields and ordering and add nullable audit metadata and
 an explicit active/voided status. No recursive records are embedded.
+
+
+## Authentication migration (Milestone 9)
+
+Revision `20261003_0003` upgrades the M8 head without changing existing financial
+rows, actor IDs, void metadata, or replacement links. It normalizes existing user
+emails, adds nullable password hashes, adds owner/member roles and account-linked
+ownership constraints, and creates persistent `auth_sessions`. Normalized email
+collisions deliberately fail the migration instead of merging historical users.
+
+PostgreSQL enforces normalized unique emails, at most one account-linked owner per
+group, and one membership per user per group. Sessions persist only the opaque
+bearer token's SHA-256 hash, an independent CSRF token, and lifecycle timestamps.
+Authentication uses a short read session that closes before application-owned
+financial write transactions. User credentials remain outside financial domain
+values. See [authentication and permissions](authentication.md) for cookie, CSRF,
+authorization, and local registration details.
+
+Existing user password hashes remain NULL and existing memberships default to
+member; no owner or account access is invented. Legacy trips without linked
+account access remain private. Reset expendable local data or manually establish
+reviewed credentials and membership without changing historical actor IDs.
+
+Upgrade with the same `alembic upgrade head` command above. Downgrade to
+`20261003_0002` discards sessions, credentials, and roles while retaining financial
+history; perform it only on disposable databases.

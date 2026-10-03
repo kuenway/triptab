@@ -95,8 +95,9 @@ an empty suggestions list. Suggestions have no write endpoint or storage model.
 occurred outside TripTab; TripTab does not move money. The application constructs
 the existing immutable `Settlement`, and the repository validates group membership
 before flushing it in the application-owned transaction. The transaction commits
-once, including creation of the development actor if needed. Failures roll back
-both the payment and any newly created actor. No balance columns are stored.
+once. The recording actor is the authenticated User. Failures roll back
+the payment; the existing authenticated account is retained. No balance columns
+are stored.
 
 The sender's balance increases by the amount; the recipient's decreases. For
 Alice `+600`, Bob `-300`, and Charlie `-300`, recording Bob paying Alice NT$300
@@ -122,10 +123,10 @@ not an exactly-once guarantee. An uncertain network response may follow a commit
 write; check payment history before retrying. Server-side idempotency, ledger
 versions, and optimistic locking remain production-hardening concerns.
 
-The single internal `DEVELOPMENT_ACTOR` in `app/application/service.py` supplies
-`created_by_user_id` for expense and settlement creation, voids, and corrections.
-It is not an authenticated user and must be replaced by the real authenticated
-actor in all six operations when authentication is added.
+The authenticated current User supplies `created_by_user_id` for expense and
+settlement creation, voids, and corrections. Group authorization lives in the
+application layer; see [the permission rules](authentication.md). Accounting
+remains pure and does not inspect login sessions or membership roles.
 
 ## Voids, corrections, and effective history
 
@@ -136,7 +137,7 @@ UTC recording time, and actor. The original financial fields and expense splits
 remain stored. A correction saves a new complete Expense (Equal or Exact) or
 Settlement and its original's void record in one application-owned transaction.
 The new record has its own UUID and recording time. A failure rolls back the new
-record, its splits, the void, and any new development actor together.
+record, its splits, and the void together; the authenticated account remains.
 
 Full audit history includes all original and replacement records. Effective
 financial history contains only records without a corresponding void. The
@@ -166,9 +167,5 @@ a void asks for confirmation and a reason. Both explain that the original stays
 in history. Every successful change refreshes expenses, payments, balances, and
 suggestions from the API. The frontend does no balance arithmetic.
 
-The same internal `DEVELOPMENT_ACTOR` records all six operations: expense creation,
-settlement creation, expense void, expense correction, settlement void, and
-settlement correction. Correction uses it for both replacement and void. Replace
-all these recording uses with the authenticated actor when authentication arrives.
-This actor does not confer access control. There is no authentication or
-permission enforcement yet.
+All six creation/void/correction operations use the authenticated User as actor.
+Original history keeps its original actor ID even when corrected by an owner.

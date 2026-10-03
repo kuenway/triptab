@@ -67,8 +67,13 @@ class LedgerRepository:
         row = self.session.get(GroupRow, group_id)
         return group_from_row(row) if row else None
 
-    def list_groups(self) -> tuple[Group, ...]:
-        rows = self.session.scalars(select(GroupRow).order_by(GroupRow.id))
+    def list_groups(self, user_id: UUID) -> tuple[Group, ...]:
+        rows = self.session.scalars(
+            select(GroupRow)
+            .join(GroupMemberRow, GroupMemberRow.group_id == GroupRow.id)
+            .where(GroupMemberRow.user_id == user_id)
+            .order_by(GroupRow.id)
+        )
         return tuple(group_from_row(row) for row in rows)
 
     def save_member(self, member: GroupMember) -> None:
@@ -77,6 +82,7 @@ class LedgerRepository:
                 id=member.id,
                 group_id=member.group_id,
                 user_id=member.user_id,
+                role=member.role,
                 display_name=member.display_name,
             )
         )
@@ -235,3 +241,11 @@ class LedgerRepository:
             select(SettlementVoidRow).where(SettlementVoidRow.group_id == group_id)
         )
         return tuple(settlement_void_from_row(row) for row in rows)
+
+    def get_membership(self, group_id: UUID, user_id: UUID) -> GroupMember | None:
+        row = self.session.scalar(
+            select(GroupMemberRow).where(
+                GroupMemberRow.group_id == group_id, GroupMemberRow.user_id == user_id
+            )
+        )
+        return member_from_row(row) if row else None

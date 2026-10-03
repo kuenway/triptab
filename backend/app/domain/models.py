@@ -71,6 +71,7 @@ class GroupMember:
     group_id: UUID
     display_name: str
     user_id: UUID | None = None
+    role: Literal["owner", "member"] = "member"
 
     def __post_init__(self) -> None:
         _require_uuid("id", self.id)
@@ -78,6 +79,11 @@ class GroupMember:
         _require_nonblank("display_name", self.display_name)
         if self.user_id is not None:
             _require_uuid("user_id", self.user_id)
+
+        if self.role not in {"owner", "member"}:
+            raise DomainValidationError("role must be owner or member")
+        if self.role == "owner" and self.user_id is None:
+            raise DomainValidationError("owner must be linked to a user")
 
     @property
     def is_guest(self) -> bool:

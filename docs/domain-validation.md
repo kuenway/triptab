@@ -31,3 +31,9 @@ and active status; database keys enforce at most one void per target and
 same-group replacement references. Original financial domain contracts are
 unchanged. Effective-record selection belongs to persistence/application, before
 pure accounting runs.
+
+`GroupMember.role` is owner or member; an owner must be linked to a User. The
+application enforces membership and recording permissions before financial
+lookups and writes. Password hashes and login sessions are infrastructure, not
+financial domain fields. Safe User values never carry credentials. Actor IDs are
+trusted only when supplied by the canonical authenticated-user dependency.

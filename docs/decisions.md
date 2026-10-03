@@ -18,3 +18,9 @@ Milestone 8 implements immutable history with separate void rows. Replacement
 links live on those rows, and balances use effective records selected before
 accounting. Audit metadata extends existing retrieval responses and history
 sections; no combined timeline or generic event-sourcing layer is needed.
+
+Milestone 9 adds first-party Argon2id accounts, PostgreSQL opaque sessions,
+explicit Secure-cookie configuration, session-bound CSRF tokens and Origin checks,
+and account-linked owner/member authorization. New groups create owner membership
+atomically. Legacy financial history is retained without inventing ownership.
+Inviting/linking additional registered members is deferred; owners can add guests.

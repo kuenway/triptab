@@ -8,6 +8,8 @@ import { PaymentForm, PaymentHistory, SuggestedPayments } from "./payments";
 
 import { AuditDetails, FinancialActions, localDateTime } from "./financial-history";
 
+import { AccountMenu, useAuth } from "./auth";
+
 const money = (amount: number) => `NT$${new Intl.NumberFormat("en-US").format(amount)}`;
 
 export function TravelerForm({ tripId, onAdded }: { tripId: string; onAdded: () => void }) {
@@ -58,6 +60,8 @@ export function BalanceList({ balances }: { balances: Balances }) {
 }
 
 export function ExpenseHistory({ expenses, travelers, tripId, onChanged }: { expenses: Expense[]; travelers: Traveler[]; tripId?: string; onChanged?: () => Promise<void> }) {
+  const { user } = useAuth();
+  const owner = travelers.some((traveler) => traveler.user_id === user?.id && traveler.role === "owner");
   const names = Object.fromEntries(travelers.map((traveler) => [traveler.id, traveler.display_name]));
   if (expenses.length === 0) return <p className="muted">No expenses yet. Add one to start the tab.</p>;
   return (
@@ -75,7 +79,7 @@ export function ExpenseHistory({ expenses, travelers, tripId, onChanged }: { exp
             ))}
           </div>
           <AuditDetails record={expense} kind="expense" />
-          {tripId && onChanged ? <FinancialActions tripId={tripId} record={expense} kind="expense" onChanged={onChanged} correction={(close) => <ExpenseForm tripId={tripId} travelers={travelers} initialExpense={expense} onCancel={close} onCreated={async () => { await onChanged(); close(); }} />} /> : null}
+          {tripId && onChanged && (owner || expense.created_by_user_id === user?.id) ? <FinancialActions tripId={tripId} record={expense} kind="expense" onChanged={onChanged} correction={(close) => <ExpenseForm tripId={tripId} travelers={travelers} initialExpense={expense} onCancel={close} onCreated={async () => { await onChanged(); close(); }} />} /> : null}
         </article>
       ))}
     </div>
@@ -207,6 +211,7 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
 }
 
 export function TripDashboard({ tripId }: { tripId: string }) {
+  const { user } = useAuth();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [travelers, setTravelers] = useState<Traveler[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -253,13 +258,15 @@ export function TripDashboard({ tripId }: { tripId: string }) {
 
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
+  const owner = travelers.some((traveler) => traveler.user_id === user?.id && traveler.role === "owner");
+
   if (loading) return <main className="shell"><p role="status">Loading trip…</p></main>;
   if (notFound) return <main className="shell"><p className="eyebrow">TRIP NOT FOUND</p><h1>We couldn’t find that trip.</h1><Link href="/">← Back to trips</Link></main>;
   if (!trip) return <main className="shell"><p className="alert" role="alert">{error || "Could not load this trip."}</p><button onClick={() => void load()}>Try again</button><p><Link href="/">← Back to trips</Link></p></main>;
 
   return (
     <main className="shell">
-      <header className="site-header"><Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link><Link className="back-link" href="/">← All trips</Link></header>
+      <header className="site-header"><Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link><div className="account-menu"><Link className="back-link" href="/">← All trips</Link><AccountMenu /></div></header>
       <div className="page-intro trip-intro"><p className="eyebrow">YOUR TRIP</p><h1>{trip.name}</h1><p>Shared expenses in TWD · {travelers.length} {travelers.length === 1 ? "traveler" : "travelers"}</p></div>
       {error ? <p className="alert" role="alert">{error}</p> : null}
       <div className="dashboard-grid">
@@ -272,10 +279,10 @@ export function TripDashboard({ tripId }: { tripId: string }) {
         <div className="dashboard-side">
           <section className="panel" aria-labelledby="balances-heading"><div className="section-heading"><h2 id="balances-heading">Balances</h2></div><p className="muted section-caption">Who should receive and who owes.</p>{balances ? <BalanceList balances={balances} /> : <p className="muted">Loading balances…</p>}</section>
           <section className="panel" aria-labelledby="suggested-payments-heading"><div className="section-heading"><h2 id="suggested-payments-heading">Suggested payments</h2></div><p className="muted section-caption">Mark as paid only after a payment happened outside TripTab.</p>{suggestionsError ? <p className="alert" role="alert">{suggestionsError}</p> : suggestions ? <SuggestedPayments tripId={tripId} travelers={travelers} suggestions={suggestions} onRecorded={load} /> : <p className="muted" role="status">Loading suggested payments…</p>}</section>
-          <section className="panel" aria-labelledby="travelers-heading"><div className="section-heading"><h2 id="travelers-heading">Travelers</h2><span className="count">{travelers.length}</span></div>{travelers.length === 0 ? <p className="muted">No travelers yet. Add the people sharing this trip.</p> : <div className="traveler-list">{travelers.map((traveler) => <div className="traveler-row" key={traveler.id}><span className="person-dot" aria-hidden="true">{traveler.display_name.charAt(0).toUpperCase()}</span>{traveler.display_name}</div>)}</div>}<TravelerForm tripId={tripId} onAdded={() => void load()} /></section>
+          <section className="panel" aria-labelledby="travelers-heading"><div className="section-heading"><h2 id="travelers-heading">Travelers</h2><span className="count">{travelers.length}</span></div>{travelers.length === 0 ? <p className="muted">No travelers yet. Add the people sharing this trip.</p> : <div className="traveler-list">{travelers.map((traveler) => <div className="traveler-row" key={traveler.id}><span className="person-dot" aria-hidden="true">{traveler.display_name.charAt(0).toUpperCase()}</span>{traveler.display_name} <span className="strategy-pill">{traveler.role === "owner" ? "Owner" : traveler.user_id ? "Member" : "Guest"}</span></div>)}</div>}{owner ? <TravelerForm tripId={tripId} onAdded={() => void load()} /> : null}</section>
         </div>
       </div>
-      <p className="dev-note">Local development version · No sign-in or access controls yet</p>
+      <p className="dev-note">Private trip · Financial history is preserved</p>
     </main>
   );
 }

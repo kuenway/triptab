@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -39,11 +40,14 @@ class UserRow(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint("length(trim(email)) > 0", name="email_nonblank"),
+        CheckConstraint("email = lower(trim(email))", name="email_normalized"),
         CheckConstraint("length(trim(display_name)) > 0", name="display_name_nonblank"),
     )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    # NULL keeps historical users valid without making them login accounts.
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
@@ -76,6 +80,15 @@ class GroupMemberRow(Base):
     __table_args__ = (
         UniqueConstraint("group_id", "id", name="uq_group_members_group_id_id"),
         UniqueConstraint("group_id", "user_id", name="uq_group_members_group_user"),
+        CheckConstraint("role IN ('owner', 'member')", name="role_supported"),
+        CheckConstraint("role <> 'owner' OR user_id IS NOT NULL", name="owner_account"),
+        Index(
+            "uq_group_members_owner",
+            "group_id",
+            unique=True,
+            postgresql_where=text("role = 'owner'"),
+        ),
+        Index("ix_group_members_user_id", "user_id"),
         CheckConstraint("length(trim(display_name)) > 0", name="display_name_nonblank"),
     )
 
@@ -91,6 +104,9 @@ class GroupMemberRow(Base):
         nullable=True,
     )
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(10), nullable=False, server_default="member"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
     )
@@ -281,4 +297,32 @@ class SettlementVoidRow(Base):
         PG_UUID(as_uuid=True),
         nullable=True,
         unique=True,
+    )
+
+
+class AuthSessionRow(Base):
+    __tablename__ = "auth_sessions"
+    __table_args__ = (
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_sha256"),
+        CheckConstraint("length(csrf_token) = 43", name="csrf_token_length"),
+        CheckConstraint("expires_at > created_at", name="expiration_after_creation"),
+        Index("ix_auth_sessions_user_id", "user_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    csrf_token: Mapped[str] = mapped_column(String(43), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
