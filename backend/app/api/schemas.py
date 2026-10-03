@@ -88,7 +88,24 @@ class SplitResponse(BaseModel):
     amount: int
 
 
-class ExpenseResponse(BaseModel):
+class FinancialAudit(BaseModel):
+    status: Literal["active", "voided"] = "active"
+    void_reason: str | None = None
+    void_created_at: AwareDatetime | None = None
+    void_created_by_user_id: UUID | None = None
+    replaces_id: UUID | None = None
+    replaced_by_id: UUID | None = None
+
+
+class VoidRequest(RequestModel):
+    reason: str
+
+
+class ExpenseCorrection(VoidRequest):
+    replacement: ExpenseCreate
+
+
+class ExpenseResponse(FinancialAudit):
     id: UUID
     group_id: UUID
     description: str
@@ -100,8 +117,11 @@ class ExpenseResponse(BaseModel):
     created_at: AwareDatetime
 
     @classmethod
-    def from_domain(cls, expense: Expense) -> "ExpenseResponse":
+    def from_domain(
+        cls, expense: Expense, audit: dict | None = None
+    ) -> "ExpenseResponse":
         return cls(
+            **(audit or {}),
             id=expense.id,
             group_id=expense.group_id,
             description=expense.description,
@@ -150,7 +170,11 @@ class SettlementCreate(RequestModel):
     occurred_at: AwareDatetime
 
 
-class SettlementResponse(BaseModel):
+class SettlementCorrection(VoidRequest):
+    replacement: SettlementCreate
+
+
+class SettlementResponse(FinancialAudit):
     id: UUID
     group_id: UUID
     from_member_id: UUID
@@ -163,9 +187,10 @@ class SettlementResponse(BaseModel):
 
     @classmethod
     def from_domain(
-        cls, settlement: Settlement, names: dict[UUID, str]
+        cls, settlement: Settlement, names: dict[UUID, str], audit: dict | None = None
     ) -> "SettlementResponse":
         return cls(
+            **(audit or {}),
             id=settlement.id,
             group_id=settlement.group_id,
             from_member_id=settlement.from_member_id,

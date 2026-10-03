@@ -381,3 +381,189 @@ def test_expected_constraints_exist_on_migrated_schema(pg_engine: Engine) -> Non
     assert {"fk_settlements_group_sender", "fk_settlements_group_recipient"}.issubset(
         {item["name"] for item in inspector.get_foreign_keys("settlements")}
     )
+
+
+@pytest.mark.parametrize("kind", ["expense", "settlement"])
+def test_void_round_trip_links_uniqueness_and_effective_history(db_session, kind):
+    from app.domain import ExpenseVoid, SettlementVoid
+
+    with db_session.begin():
+        user, group, members = seed_group(db_session)
+        repo = LedgerRepository(db_session)
+        if kind == "expense":
+            original = make_expense(user, group, members)
+            replacement = replace(original, id=uuid4(), description="Corrected dinner")
+            void = ExpenseVoid(
+                original.id, group.id, "Receipt", RECORDED, user.id, replacement.id
+            )
+        else:
+            original = make_settlement(user, group, members[1], members[0])
+            replacement = replace(original, id=uuid4(), amount_minor=200)
+            void = SettlementVoid(
+                original.id,
+                group.id,
+                "Payment amount",
+                RECORDED,
+                user.id,
+                replacement.id,
+            )
+        getattr(repo, f"save_{kind}")(original)
+        getattr(repo, f"save_{kind}")(replacement)
+        getattr(repo, f"save_{kind}_void")(void)
+    db_session.expunge_all()
+    assert getattr(repo, f"get_{kind}_void")(original.id) == void
+    assert getattr(repo, f"list_{kind}_voids")(group.id) == (void,)
+    active = getattr(repo, f"list_{kind}s")(group.id, effective=True)
+    assert [item.id for item in active] == [replacement.id]
+    assert len(getattr(repo, f"list_{kind}s")(group.id)) == 2
+    db_session.rollback()
+    with pytest.raises(IntegrityError) as error, db_session.begin():
+        getattr(repo, f"save_{kind}_void")(void)
+    assert error.value.orig.diag.constraint_name == f"pk_{kind}_voids"
+
+
+@pytest.mark.parametrize("kind", ["expense", "settlement"])
+@pytest.mark.parametrize(
+    "violation",
+    [
+        "missing_target",
+        "target_group",
+        "replacement_group",
+        "missing_actor",
+        "self_replacement",
+        "duplicate_replacement",
+    ],
+)
+def test_void_database_integrity(db_session, kind, violation):
+    from app.persistence.models import ExpenseVoidRow, SettlementVoidRow
+
+    with db_session.begin():
+        user, group, members = seed_group(db_session)
+        _, other_group, others = seed_group(db_session)
+        repo = LedgerRepository(db_session)
+        if kind == "expense":
+            original = make_expense(user, group, members)
+            another = replace(original, id=uuid4())
+            replacement = make_expense(user, other_group, others)
+            row_type = ExpenseVoidRow
+        else:
+            original = make_settlement(user, group, members[1], members[0])
+            another = replace(original, id=uuid4())
+            replacement = make_settlement(user, other_group, others[1], others[0])
+            row_type = SettlementVoidRow
+        for item in (original, another, replacement):
+            getattr(repo, f"save_{kind}")(item)
+    values = {
+        f"{kind}_id": original.id,
+        "group_id": group.id,
+        "reason": "Fix",
+        "created_at": RECORDED,
+        "created_by_user_id": user.id,
+    }
+    if violation == "missing_target":
+        values[f"{kind}_id"] = uuid4()
+    elif violation == "target_group":
+        values["group_id"] = other_group.id
+    elif violation == "replacement_group":
+        values["replacement_id"] = replacement.id
+    elif violation == "missing_actor":
+        values["created_by_user_id"] = uuid4()
+    elif violation == "self_replacement":
+        values["replacement_id"] = original.id
+    else:
+        with db_session.begin():
+            db_session.add(row_type(**values, replacement_id=another.id))
+            db_session.flush()
+        values["replacement_id"] = another.id
+        with db_session.begin():
+            third = replace(original, id=uuid4())
+            getattr(repo, f"save_{kind}")(third)
+        values[f"{kind}_id"] = third.id
+    with pytest.raises(IntegrityError), db_session.begin():
+        db_session.add(row_type(**values))
+        db_session.flush()
+
+
+@pytest.mark.parametrize("kind", ["expense", "settlement"])
+@pytest.mark.parametrize("operation", ["void", "correction"])
+def test_failed_financial_change_rolls_back_new_development_actor(
+    db_session, monkeypatch, kind, operation
+):
+    from app.application.service import DEVELOPMENT_ACTOR, TripTabService
+
+    with db_session.begin():
+        user, group, members = seed_group(db_session)
+        original = (
+            make_expense(user, group, members)
+            if kind == "expense"
+            else make_settlement(user, group, members[1], members[0])
+        )
+        getattr(LedgerRepository(db_session), f"save_{kind}")(original)
+    original_save = getattr(LedgerRepository, f"save_{kind}_void")
+
+    def fail_after_flush(self, value):
+        original_save(self, value)
+        raise IntegrityError("forced failure", {}, Exception("rollback"))
+
+    monkeypatch.setattr(LedgerRepository, f"save_{kind}_void", fail_after_flush)
+    service = TripTabService(db_session)
+    with pytest.raises(IntegrityError):
+        if operation == "void":
+            getattr(service, f"void_{kind}")(group.id, original.id, "Wrong event")
+        elif kind == "expense":
+            service.correct_expense(
+                group.id,
+                original.id,
+                "Wrong receipt",
+                "Dinner",
+                990,
+                members[0].id,
+                SplitStrategy.EQUAL,
+                OCCURRED,
+                tuple(member.id for member in members),
+            )
+        else:
+            service.correct_settlement(
+                group.id,
+                original.id,
+                "Wrong amount",
+                members[1].id,
+                members[0].id,
+                200,
+                OCCURRED,
+            )
+    repo = LedgerRepository(db_session)
+    assert repo.get_user(DEVELOPMENT_ACTOR.id) is None
+    assert getattr(repo, f"get_{kind}_void")(original.id) is None
+    assert [item.id for item in getattr(repo, f"list_{kind}s")(group.id)] == [
+        original.id
+    ]
+
+
+@pytest.mark.parametrize("kind", ["expense", "settlement"])
+def test_void_foreign_keys_restrict_deleting_audit_history(db_session, kind):
+    from sqlalchemy import delete
+
+    from app.domain import ExpenseVoid, SettlementVoid
+
+    with db_session.begin():
+        user, group, members = seed_group(db_session)
+        repo = LedgerRepository(db_session)
+        if kind == "expense":
+            record = make_expense(user, group, members)
+            void = ExpenseVoid(record.id, group.id, "Wrong event", RECORDED, user.id)
+            row_type = ExpenseRow
+        else:
+            record = make_settlement(user, group, members[1], members[0])
+            void = SettlementVoid(record.id, group.id, "Wrong event", RECORDED, user.id)
+            row_type = SettlementRow
+        getattr(repo, f"save_{kind}")(record)
+        getattr(repo, f"save_{kind}_void")(void)
+    with pytest.raises(IntegrityError) as error, db_session.begin():
+        if kind == "expense":
+            db_session.execute(
+                delete(ExpenseSplitRow).where(ExpenseSplitRow.expense_id == record.id)
+            )
+        db_session.execute(delete(row_type).where(row_type.id == record.id))
+    assert error.value.orig.diag.constraint_name == f"fk_{kind}_voids_target_group"
+    assert getattr(repo, f"get_{kind}")(record.id) is not None

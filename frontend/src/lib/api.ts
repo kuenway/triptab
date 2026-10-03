@@ -1,3 +1,12 @@
+export type FinancialAudit = {
+  status: "active" | "voided";
+  void_reason?: string | null;
+  void_created_at?: string | null;
+  void_created_by_user_id?: string | null;
+  replaces_id?: string | null;
+  replaced_by_id?: string | null;
+};
+
 export type Trip = {
   id: string;
   name: string;
@@ -14,7 +23,7 @@ export type Traveler = {
 
 export type ExpenseSplit = { member_id: string; amount: number };
 
-export type Expense = {
+export type Expense = FinancialAudit & {
   id: string;
   group_id: string;
   description: string;
@@ -51,7 +60,7 @@ export type SettlementInput = {
   occurred_at: string;
 };
 
-export type Settlement = SettlementInput & {
+export type Settlement = SettlementInput & FinancialAudit & {
   id: string;
   group_id: string;
   from_display_name: string;
@@ -119,5 +128,13 @@ export const api = {
     request<SettlementSuggestions>(`/groups/${id}/settlement-suggestions`),
   recordSettlement: (id: string, payment: SettlementInput) =>
     request<Settlement>(`/groups/${id}/settlements`, payment),
+  voidExpense: (id: string, expenseId: string, reason: string) =>
+    request<Expense>(`/groups/${id}/expenses/${expenseId}/void`, { reason }),
+  correctExpense: (id: string, expenseId: string, reason: string, replacement: ExpenseInput) =>
+    request<Expense>(`/groups/${id}/expenses/${expenseId}/corrections`, { reason, replacement }),
+  voidSettlement: (id: string, settlementId: string, reason: string) =>
+    request<Settlement>(`/groups/${id}/settlements/${settlementId}/void`, { reason }),
+  correctSettlement: (id: string, settlementId: string, reason: string, replacement: SettlementInput) =>
+    request<Settlement>(`/groups/${id}/settlements/${settlementId}/corrections`, { reason, replacement }),
   listSettlements: (id: string) => request<Settlement[]>(`/groups/${id}/settlements`),
 };

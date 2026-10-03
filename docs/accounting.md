@@ -48,9 +48,9 @@ members from another group are rejected. Recalculating the same supplied history
 yields the same result.
 
 The caller must include historical members referenced by financial records.
-Inactive-member selection, void/replacement filtering, idempotency, and concurrency
-controls are deferred. The application loads persisted history before calling
-accounting.
+Inactive-member selection, idempotency, ledger versions, and general concurrency
+controls remain deferred. The application loads effective persisted history before
+calling accounting; duplicate voids are protected by database uniqueness.
 
 ## Settlement suggestions
 
@@ -123,6 +123,52 @@ write; check payment history before retrying. Server-side idempotency, ledger
 versions, and optimistic locking remain production-hardening concerns.
 
 The single internal `DEVELOPMENT_ACTOR` in `app/application/service.py` supplies
-`created_by_user_id` for **both expense creation and settlement recording**. These
-are its only recording uses. It is not an authenticated user and must be replaced
-by the real authenticated actor in both operations when authentication is added.
+`created_by_user_id` for expense and settlement creation, voids, and corrections.
+It is not an authenticated user and must be replaced by the real authenticated
+actor in all six operations when authentication is added.
+
+## Voids, corrections, and effective history
+
+Financial history is immutable after entry: **void is not delete**, and
+**correction is not update**. There are no financial PATCH or DELETE endpoints.
+A void inserts an `ExpenseVoid` or `SettlementVoid` with the original ID, reason,
+UTC recording time, and actor. The original financial fields and expense splits
+remain stored. A correction saves a new complete Expense (Equal or Exact) or
+Settlement and its original's void record in one application-owned transaction.
+The new record has its own UUID and recording time. A failure rolls back the new
+record, its splits, the void, and any new development actor together.
+
+Full audit history includes all original and replacement records. Effective
+financial history contains only records without a corresponding void. The
+repository selects this effective history **before** the existing pure
+`calculate_balances()` function runs; neither accounting nor domain imports ORM
+void rows. Suggestions reuse these same derived balances. No second balance
+formula or stored balance is introduced.
+
+For an Equal expense paid by Alice for Alice, Bob, and Charlie, correcting 900 to
+990 changes balances from `+600/-300/-300` to `+660/-330/-330`. Voiding that expense
+without replacement makes its contribution zero. Correcting Bob's payment to
+Alice from 300 to 200 uses only the 200 payment; voiding it restores the balances
+before that payment. Other active financial records continue to contribute.
+
+Correction chains keep immediate links: A corrected by B, then B corrected by C,
+leaves A and B voided and C active. Voiding C does not reactivate A or B. The void
+row's optional `replacement_id` supplies both `replaced_by_id` on the original
+and `replaces_id` on the replacement. No original financial row is updated to
+maintain links. Existing list responses retain full history and add `status`,
+`void_reason`, `void_created_at`, `void_created_by_user_id`, `replaces_id`, and
+`replaced_by_id`. Expense detail returns this metadata too. IDs are nonrecursive.
+
+The frontend displays these statuses, reasons, and links in the existing expense
+and payment histories. Active records offer Correct and Void. A correction form
+starts with the original values and requires a reason and complete replacement;
+a void asks for confirmation and a reason. Both explain that the original stays
+in history. Every successful change refreshes expenses, payments, balances, and
+suggestions from the API. The frontend does no balance arithmetic.
+
+The same internal `DEVELOPMENT_ACTOR` records all six operations: expense creation,
+settlement creation, expense void, expense correction, settlement void, and
+settlement correction. Correction uses it for both replacement and void. Replace
+all these recording uses with the authenticated actor when authentication arrives.
+This actor does not confer access control. There is no authentication or
+permission enforcement yet.

@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -198,3 +198,30 @@ def test_financial_records_cannot_be_mutated(
 
     with pytest.raises(AttributeError):
         record.amount_minor = 1
+
+
+@pytest.mark.parametrize("kind", ["expense", "settlement"])
+def test_void_values_are_immutable_and_validate_audit_fields(kind):
+    from dataclasses import FrozenInstanceError
+
+    from app.domain import DomainValidationError, ExpenseVoid, SettlementVoid
+
+    cls = ExpenseVoid if kind == "expense" else SettlementVoid
+    values = {
+        f"{kind}_id": uuid4(),
+        "group_id": uuid4(),
+        "reason": "Mistake",
+        "created_at": datetime.now(UTC),
+        "created_by_user_id": uuid4(),
+    }
+    void = cls(**values)
+    with pytest.raises(FrozenInstanceError):
+        void.reason = "rewrite"
+    for changes in (
+        {"reason": "  "},
+        {"created_at": datetime(2026, 1, 1)},
+        {"created_by_user_id": "bad"},
+        {"replacement_id": values[f"{kind}_id"]},
+    ):
+        with pytest.raises(DomainValidationError):
+            cls(**(values | changes))

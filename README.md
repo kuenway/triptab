@@ -116,3 +116,11 @@ frontend servers on ports 8100 and 3100 and stops them after the test. GitHub CI
 provides its own PostgreSQL service, migrates its browser-test database, installs
 Chromium, and runs the same smoke test. Server-side idempotency is deferred; UI
 submission guards do not guarantee exactly-once payment recording.
+
+
+Financial mistakes can be corrected from expense and payment history. Correct
+saves a complete replacement and voids the original atomically; Void removes its
+current balance effect while retaining history. Both require a reason. Historical
+records remain visible with status and replacement links. See
+[accounting policies](docs/accounting.md) and
+[correction APIs and migration notes](docs/persistence.md).

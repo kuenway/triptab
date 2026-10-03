@@ -10,6 +10,7 @@ from app.api.schemas import (
     BalancesResponse,
     EqualExpenseCreate,
     ExactExpenseCreate,
+    ExpenseCorrection,
     ExpenseCreate,
     ExpenseResponse,
     GroupCreate,
@@ -17,10 +18,12 @@ from app.api.schemas import (
     MemberBalance,
     MemberCreate,
     MemberResponse,
+    SettlementCorrection,
     SettlementCreate,
     SettlementResponse,
     SettlementSuggestionResponse,
     SettlementSuggestionsResponse,
+    VoidRequest,
 )
 from app.application.service import TripTabService
 from app.domain import ExpenseSplit, SplitStrategy
@@ -80,31 +83,25 @@ def create_expense(
     request: ExpenseCreate,
     service: ServiceDependency,
 ) -> ExpenseResponse:
-    if isinstance(request, EqualExpenseCreate):
-        expense = service.create_expense(
-            group_id=group_id,
-            description=request.description,
-            amount=request.amount,
-            payer_member_id=request.payer_member_id,
-            split_strategy=SplitStrategy.EQUAL,
-            participant_member_ids=tuple(request.participant_member_ids),
-            occurred_at=request.occurred_at,
-        )
-    else:
-        assert isinstance(request, ExactExpenseCreate)
-        expense = service.create_expense(
-            group_id=group_id,
-            description=request.description,
-            amount=request.amount,
-            payer_member_id=request.payer_member_id,
-            split_strategy=SplitStrategy.EXACT,
-            splits=tuple(
-                ExpenseSplit(member_id=split.member_id, amount_minor=split.amount)
-                for split in request.splits
-            ),
-            occurred_at=request.occurred_at,
-        )
+    expense = service.create_expense(group_id=group_id, **expense_values(request))
     return ExpenseResponse.from_domain(expense)
+
+
+def expense_values(request: EqualExpenseCreate | ExactExpenseCreate) -> dict:
+    values = dict(
+        description=request.description,
+        amount=request.amount,
+        payer_member_id=request.payer_member_id,
+        occurred_at=request.occurred_at,
+        split_strategy=SplitStrategy(request.split_strategy),
+    )
+    if isinstance(request, EqualExpenseCreate):
+        values["participant_member_ids"] = tuple(request.participant_member_ids)
+    else:
+        values["splits"] = tuple(
+            ExpenseSplit(split.member_id, split.amount) for split in request.splits
+        )
+    return values
 
 
 @router.get(
@@ -113,9 +110,11 @@ def create_expense(
     tags=["expenses"],
 )
 def list_expenses(group_id: UUID, service: ServiceDependency) -> list[ExpenseResponse]:
+    expenses = service.list_expenses(group_id)
+    audit = service.expense_audit(group_id)
     return [
-        ExpenseResponse.from_domain(expense)
-        for expense in service.list_expenses(group_id)
+        ExpenseResponse.from_domain(expense, audit.get(expense.id))
+        for expense in expenses
     ]
 
 
@@ -129,7 +128,10 @@ def get_expense(
     expense_id: UUID,
     service: ServiceDependency,
 ) -> ExpenseResponse:
-    return ExpenseResponse.from_domain(service.get_expense(group_id, expense_id))
+    expense = service.get_expense(group_id, expense_id)
+    return ExpenseResponse.from_domain(
+        expense, service.expense_audit(group_id).get(expense.id)
+    )
 
 
 @router.get(
@@ -208,7 +210,91 @@ def list_settlements(
     names = {
         member.id: member.display_name for member in service.list_members(group_id)
     }
+    settlements = service.list_settlements(group_id)
+    audit = service.settlement_audit(group_id)
     return [
-        SettlementResponse.from_domain(settlement, names)
-        for settlement in service.list_settlements(group_id)
+        SettlementResponse.from_domain(settlement, names, audit.get(settlement.id))
+        for settlement in settlements
     ]
+
+
+@router.post(
+    "/groups/{group_id}/expenses/{expense_id}/void",
+    response_model=ExpenseResponse,
+    tags=["expenses"],
+)
+def void_expense(
+    group_id: UUID, expense_id: UUID, request: VoidRequest, service: ServiceDependency
+) -> ExpenseResponse:
+    service.void_expense(group_id, expense_id, request.reason)
+    return get_expense(group_id, expense_id, service)
+
+
+@router.post(
+    "/groups/{group_id}/expenses/{expense_id}/corrections",
+    response_model=ExpenseResponse,
+    status_code=201,
+    tags=["expenses"],
+)
+def correct_expense(
+    group_id: UUID,
+    expense_id: UUID,
+    request: ExpenseCorrection,
+    service: ServiceDependency,
+) -> ExpenseResponse:
+    replacement = service.correct_expense(
+        group_id=group_id,
+        target_id=expense_id,
+        reason=request.reason,
+        **expense_values(request.replacement),
+    )
+    return ExpenseResponse.from_domain(
+        replacement, service.expense_audit(group_id).get(replacement.id)
+    )
+
+
+@router.post(
+    "/groups/{group_id}/settlements/{settlement_id}/void",
+    response_model=SettlementResponse,
+    tags=["settlements"],
+)
+def void_settlement(
+    group_id: UUID,
+    settlement_id: UUID,
+    request: VoidRequest,
+    service: ServiceDependency,
+) -> SettlementResponse:
+    service.void_settlement(group_id, settlement_id, request.reason)
+    settlement = service.get_settlement(group_id, settlement_id)
+    names = {
+        member.id: member.display_name for member in service.list_members(group_id)
+    }
+    return SettlementResponse.from_domain(
+        settlement, names, service.settlement_audit(group_id).get(settlement_id)
+    )
+
+
+@router.post(
+    "/groups/{group_id}/settlements/{settlement_id}/corrections",
+    response_model=SettlementResponse,
+    status_code=201,
+    tags=["settlements"],
+)
+def correct_settlement(
+    group_id: UUID,
+    settlement_id: UUID,
+    request: SettlementCorrection,
+    service: ServiceDependency,
+) -> SettlementResponse:
+    replacement = service.correct_settlement(
+        group_id=group_id,
+        target_id=settlement_id,
+        reason=request.reason,
+        **request.replacement.model_dump(),
+    )
+    names = {
+        member.id: member.display_name for member in service.list_members(group_id)
+    }
+    return SettlementResponse.from_domain(
+        replacement, names, service.settlement_audit(group_id).get(replacement.id)
+    )

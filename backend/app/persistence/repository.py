@@ -6,20 +6,32 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.accounting import validate_expense, validate_settlement
-from app.domain import Expense, Group, GroupMember, Settlement, User
+from app.domain import (
+    Expense,
+    ExpenseVoid,
+    Group,
+    GroupMember,
+    Settlement,
+    SettlementVoid,
+    User,
+)
 from app.persistence.mappers import (
     expense_from_row,
+    expense_void_from_row,
     group_from_row,
     member_from_row,
     settlement_from_row,
+    settlement_void_from_row,
     user_from_row,
 )
 from app.persistence.models import (
     ExpenseRow,
     ExpenseSplitRow,
+    ExpenseVoidRow,
     GroupMemberRow,
     GroupRow,
     SettlementRow,
+    SettlementVoidRow,
     UserRow,
 )
 
@@ -122,10 +134,19 @@ class LedgerRepository:
         )
         return expense_from_row(row) if row else None
 
-    def list_expenses(self, group_id: UUID) -> tuple[Expense, ...]:
+    def list_expenses(
+        self, group_id: UUID, *, effective: bool = False
+    ) -> tuple[Expense, ...]:
         rows = self.session.scalars(
             select(ExpenseRow)
             .where(ExpenseRow.group_id == group_id)
+            .where(
+                ~select(ExpenseVoidRow.expense_id)
+                .where(ExpenseVoidRow.expense_id == ExpenseRow.id)
+                .exists()
+                if effective
+                else True
+            )
             .order_by(ExpenseRow.created_at, ExpenseRow.id)
             .options(selectinload(ExpenseRow.splits))
         )
@@ -152,10 +173,65 @@ class LedgerRepository:
         row = self.session.get(SettlementRow, settlement_id)
         return settlement_from_row(row) if row else None
 
-    def list_settlements(self, group_id: UUID) -> tuple[Settlement, ...]:
+    def list_settlements(
+        self, group_id: UUID, *, effective: bool = False
+    ) -> tuple[Settlement, ...]:
         rows = self.session.scalars(
             select(SettlementRow)
             .where(SettlementRow.group_id == group_id)
+            .where(
+                ~select(SettlementVoidRow.settlement_id)
+                .where(SettlementVoidRow.settlement_id == SettlementRow.id)
+                .exists()
+                if effective
+                else True
+            )
             .order_by(SettlementRow.created_at, SettlementRow.id)
         )
         return tuple(settlement_from_row(row) for row in rows)
+
+    def save_expense_void(self, void: ExpenseVoid) -> None:
+        self.session.add(
+            ExpenseVoidRow(
+                expense_id=void.expense_id,
+                group_id=void.group_id,
+                reason=void.reason,
+                created_at=void.created_at,
+                created_by_user_id=void.created_by_user_id,
+                replacement_id=void.replacement_id,
+            )
+        )
+        self.session.flush()
+
+    def get_expense_void(self, target_id: UUID) -> ExpenseVoid | None:
+        row = self.session.get(ExpenseVoidRow, target_id)
+        return expense_void_from_row(row) if row else None
+
+    def list_expense_voids(self, group_id: UUID) -> tuple[ExpenseVoid, ...]:
+        rows = self.session.scalars(
+            select(ExpenseVoidRow).where(ExpenseVoidRow.group_id == group_id)
+        )
+        return tuple(expense_void_from_row(row) for row in rows)
+
+    def save_settlement_void(self, void: SettlementVoid) -> None:
+        self.session.add(
+            SettlementVoidRow(
+                settlement_id=void.settlement_id,
+                group_id=void.group_id,
+                reason=void.reason,
+                created_at=void.created_at,
+                created_by_user_id=void.created_by_user_id,
+                replacement_id=void.replacement_id,
+            )
+        )
+        self.session.flush()
+
+    def get_settlement_void(self, target_id: UUID) -> SettlementVoid | None:
+        row = self.session.get(SettlementVoidRow, target_id)
+        return settlement_void_from_row(row) if row else None
+
+    def list_settlement_voids(self, group_id: UUID) -> tuple[SettlementVoid, ...]:
+        rows = self.session.scalars(
+            select(SettlementVoidRow).where(SettlementVoidRow.group_id == group_id)
+        )
+        return tuple(settlement_void_from_row(row) for row in rows)

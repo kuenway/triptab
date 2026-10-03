@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.accounting import AccountingValidationError
 from app.api.routes import router
-from app.application.service import ResourceNotFound
+from app.application.service import FinancialConflict, ResourceNotFound
 from app.domain import DomainValidationError
 
 app = FastAPI(title="TripTab API")
@@ -14,6 +14,11 @@ app.include_router(router)
 @app.exception_handler(ResourceNotFound)
 def resource_not_found(_request: Request, error: ResourceNotFound) -> JSONResponse:
     return JSONResponse(status_code=404, content={"detail": str(error)})
+
+
+@app.exception_handler(FinancialConflict)
+def financial_conflict(_request: Request, error: FinancialConflict) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": str(error)})
 
 
 @app.exception_handler(DomainValidationError)

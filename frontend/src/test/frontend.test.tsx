@@ -25,7 +25,7 @@ const travelers: Traveler[] = [
   { id: "charlie", group_id: trip.id, display_name: "Charlie", user_id: null },
 ];
 const expense: Expense = {
-  id: "expense-1", group_id: trip.id, description: "Dinner", amount: 900,
+  status: "active", id: "expense-1", group_id: trip.id, description: "Dinner", amount: 900,
   payer_member_id: "alice", split_strategy: "equal",
   splits: travelers.map((traveler) => ({ member_id: traveler.id, amount: 300 })),
   occurred_at: "2026-10-03T10:00:00Z", created_at: "2026-10-03T11:00:00Z",
@@ -210,7 +210,7 @@ it("refreshes suggestions from the backend after an expense is saved", async () 
 });
 
 const payment: Settlement = {
-  id: "payment-1", group_id: trip.id,
+  status: "active", id: "payment-1", group_id: trip.id,
   from_member_id: "bob", from_display_name: "Bob",
   to_member_id: "alice", to_display_name: "Alice", amount: 300,
   occurred_at: "2026-10-03T12:30:00Z", created_at: "2026-10-03T12:31:00Z",
@@ -345,4 +345,128 @@ it("shows payment history read errors without presenting an empty history", asyn
   render(<TripDashboard tripId={trip.id} />);
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not load payment history.");
   expect(screen.queryByText("No payments recorded yet.")).toBeNull();
+});
+
+it.each(["expense", "payment"] as const)("prepopulates %s correction and sends a complete replacement", async (kind) => {
+  const onChanged = vi.fn().mockResolvedValue(undefined);
+  vi.mocked(api.correctExpense).mockResolvedValue({ ...expense, id: "replacement", amount: 990 });
+  vi.mocked(api.correctSettlement).mockResolvedValue({ ...payment, id: "replacement", amount: 200 });
+  if (kind === "expense") render(<ExpenseHistory expenses={[expense]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
+  else render(<PaymentHistory payments={[payment]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
+  fireEvent.click(screen.getByRole("button", { name: "Correct" }));
+  const editor = within(screen.getByRole("group", { name: `Correct ${kind}` }));
+  expect(editor.getByText(/original .* will remain in history and will be marked void/)).toBeTruthy();
+  if (kind === "expense") {
+    expect(editor.getByLabelText("Description")).toHaveProperty("value", "Dinner");
+    expect(editor.getByLabelText("Paid by")).toHaveProperty("value", "alice");
+    expect(editor.getAllByRole("checkbox").every((element) => (element as HTMLInputElement).checked)).toBe(true);
+  } else {
+    expect(editor.getByLabelText("From traveler")).toHaveProperty("value", "bob");
+    expect(editor.getByLabelText("To traveler")).toHaveProperty("value", "alice");
+  }
+  fireEvent.change(editor.getByLabelText("Reason"), { target: { value: "Wrong amount" } });
+  fireEvent.change(editor.getByLabelText(kind === "expense" ? "Amount (NT$)" : "Payment amount (NT$)"), { target: { value: kind === "expense" ? "990" : "200" } });
+  fireEvent.click(editor.getByRole("button", { name: "Save correction" }));
+  const method = kind === "expense" ? api.correctExpense : api.correctSettlement;
+  await waitFor(() => expect(method).toHaveBeenCalledWith(trip.id, kind === "expense" ? expense.id : payment.id, "Wrong amount", expect.objectContaining(kind === "expense" ? { description: "Dinner", payer_member_id: "alice", amount: 990, split_strategy: "equal", participant_member_ids: ["alice", "bob", "charlie"], occurred_at: expect.any(String) } : { from_member_id: "bob", to_member_id: "alice", amount: 200, occurred_at: expect.any(String) })));
+  await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+  expect(api.addExpense).not.toHaveBeenCalled();
+  expect(api.recordSettlement).not.toHaveBeenCalled();
+});
+
+it("prepopulates Exact allocations for correction", async () => {
+  const exact = { ...expense, split_strategy: "exact" as const, splits: [{ member_id: "alice", amount: 500 }, { member_id: "bob", amount: 400 }] };
+  vi.mocked(api.correctExpense).mockResolvedValue(exact);
+  render(<ExpenseForm tripId={trip.id} travelers={travelers} initialExpense={exact} onCreated={vi.fn()} />);
+  expect(screen.getByLabelText("Exact amounts")).toHaveProperty("checked", true);
+  expect(screen.getByLabelText("Alice allocation")).toHaveProperty("value", "500");
+  expect(screen.getByLabelText("Bob allocation")).toHaveProperty("value", "400");
+  fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Receipt allocations" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save correction" }));
+  await waitFor(() => expect(api.correctExpense).toHaveBeenCalledWith(trip.id, expense.id, "Receipt allocations", expect.objectContaining({ split_strategy: "exact", splits: exact.splits })));
+});
+
+it.each(["expense", "payment"] as const)("confirms %s void and refreshes the authoritative dashboard", async (kind) => {
+  mockDashboard();
+  vi.mocked(api.listExpenses).mockResolvedValue([expense]);
+  vi.mocked(api.listSettlements).mockResolvedValue([payment]);
+  vi.mocked(api.getSettlementSuggestions).mockResolvedValueOnce(suggestions).mockResolvedValueOnce({ ...suggestions, suggestions: [] });
+  vi.mocked(api.getBalances).mockResolvedValueOnce({ group_id: trip.id, currency: "TWD", balances: [{ member_id: "alice", display_name: "Alice", amount: 600 }] }).mockResolvedValueOnce({ group_id: trip.id, currency: "TWD", balances: [{ member_id: "alice", display_name: "Alice", amount: 0 }] });
+  vi.mocked(api.voidExpense).mockResolvedValue({ ...expense, status: "voided" });
+  vi.mocked(api.voidSettlement).mockResolvedValue({ ...payment, status: "voided" });
+  render(<TripDashboard tripId={trip.id} />);
+  const history = within(await screen.findByRole("region", { name: kind === "expense" ? "Expense history" : "Payment history" }));
+  fireEvent.click(history.getByRole("button", { name: "Void" }));
+  const confirmation = within(history.getByRole("form", { name: `Void ${kind}` }));
+  expect(confirmation.getByText("This keeps the original record in history but removes it from current balances.")).toBeTruthy();
+  fireEvent.change(confirmation.getByLabelText("Reason"), { target: { value: "Wrong record" } });
+  fireEvent.click(confirmation.getByRole("button", { name: `Confirm void ${kind}` }));
+  await waitFor(() => expect(kind === "expense" ? api.voidExpense : api.voidSettlement).toHaveBeenCalledWith(trip.id, kind === "expense" ? expense.id : payment.id, "Wrong record"));
+  await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText("Everyone is settled up.")).toBeTruthy();
+  expect(within(screen.getByRole("region", { name: "Balances" })).getByText("settled")).toBeTruthy();
+  expect(api.listExpenses).toHaveBeenCalledTimes(2);
+  expect(api.listSettlements).toHaveBeenCalledTimes(2);
+});
+
+it.each(["expense", "payment"] as const)("refreshes balances, suggestions and both histories after %s correction", async (kind) => {
+  mockDashboard();
+  vi.mocked(api.listExpenses).mockResolvedValue([expense]);
+  vi.mocked(api.listSettlements).mockResolvedValue([payment]);
+  vi.mocked(api.correctExpense).mockResolvedValue({ ...expense, id: "replacement" });
+  vi.mocked(api.correctSettlement).mockResolvedValue({ ...payment, id: "replacement" });
+  vi.mocked(api.getSettlementSuggestions).mockResolvedValueOnce(suggestions).mockResolvedValueOnce({ ...suggestions, suggestions: [] });
+  render(<TripDashboard tripId={trip.id} />);
+  const history = within(await screen.findByRole("region", { name: kind === "expense" ? "Expense history" : "Payment history" }));
+  fireEvent.click(history.getByRole("button", { name: "Correct" }));
+  const editor = within(history.getByRole("group", { name: `Correct ${kind}` }));
+  fireEvent.change(editor.getByLabelText("Reason"), { target: { value: "Receipt" } });
+  fireEvent.click(editor.getByRole("button", { name: "Save correction" }));
+  await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText("Everyone is settled up.")).toBeTruthy();
+  expect(api.listExpenses).toHaveBeenCalledTimes(2);
+  expect(api.listSettlements).toHaveBeenCalledTimes(2);
+});
+
+it.each(["expense", "payment"] as const)("renders %s audit reasons and replacement links without actions on voided records", (kind) => {
+  const audit = { status: "voided" as const, void_reason: "Wrong receipt", replaces_id: "first", replaced_by_id: "third" };
+  if (kind === "expense") render(<ExpenseHistory expenses={[{ ...expense, ...audit }]} travelers={travelers} tripId={trip.id} onChanged={vi.fn()} />);
+  else render(<PaymentHistory payments={[{ ...payment, ...audit }]} travelers={travelers} tripId={trip.id} onChanged={vi.fn()} />);
+  expect(screen.getByText("Voided · excluded from current balances")).toBeTruthy();
+  expect(screen.getByText("Reason: Wrong receipt")).toBeTruthy();
+  expect(screen.getByRole("link", { name: `Replaces original ${kind}` }).getAttribute("href")).toBe(`#${kind}-first`);
+  expect(screen.getByRole("link", { name: `Replaced by another ${kind}` }).getAttribute("href")).toBe(`#${kind}-third`);
+  expect(screen.queryByRole("button", { name: "Correct" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Void" })).toBeNull();
+});
+
+it.each([
+  ["expense", "void", 409], ["expense", "correct", 422],
+  ["payment", "void", 422], ["payment", "correct", 409],
+] as const)("shows %s %s API errors (%s) without refreshing", async (kind, operation, status) => {
+  const onChanged = vi.fn();
+  const error = new ApiError(status === 409 ? "record already voided or corrected" : "Invalid financial data", status);
+  const method = kind === "expense" ? (operation === "void" ? api.voidExpense : api.correctExpense) : (operation === "void" ? api.voidSettlement : api.correctSettlement);
+  vi.mocked(method).mockRejectedValue(error);
+  if (kind === "expense") render(<ExpenseHistory expenses={[expense]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
+  else render(<PaymentHistory payments={[payment]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
+  fireEvent.click(screen.getByRole("button", { name: operation === "void" ? "Void" : "Correct" }));
+  fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Fix" } });
+  fireEvent.click(screen.getByRole("button", { name: operation === "void" ? `Confirm void ${kind}` : "Save correction" }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", error.message);
+  expect(onChanged).not.toHaveBeenCalled();
+});
+
+it.each(["expense", "payment"] as const)("preserves untouched %s timestamps including PostgreSQL microseconds", async (kind) => {
+  const occurred_at = "2026-10-03T10:00:12.345678Z";
+  if (kind === "expense") {
+    vi.mocked(api.correctExpense).mockResolvedValue(expense);
+    render(<ExpenseForm tripId={trip.id} travelers={travelers} initialExpense={{ ...expense, occurred_at }} onCreated={vi.fn()} />);
+  } else {
+    vi.mocked(api.correctSettlement).mockResolvedValue(payment);
+    render(<PaymentForm tripId={trip.id} travelers={travelers} initialPayment={{ ...payment, occurred_at }} onRecorded={vi.fn().mockResolvedValue(undefined)} />);
+  }
+  fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Description correction" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save correction" }));
+  await waitFor(() => expect(kind === "expense" ? api.correctExpense : api.correctSettlement).toHaveBeenCalledWith(trip.id, kind === "expense" ? expense.id : payment.id, "Description correction", expect.objectContaining({ occurred_at })));
 });

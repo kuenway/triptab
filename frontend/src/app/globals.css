@@ -111,3 +111,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .allocation-input { grid-template-columns: 1fr 110px; }
   .expense-topline { align-items: flex-start; }
 }
+
+.form-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.audit-details { margin-top: 1rem; font-size: .875rem; }
+.audit-details p { margin: .35rem 0; }
+.audit-actions { margin-top: 1rem; }

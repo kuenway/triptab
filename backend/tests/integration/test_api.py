@@ -650,3 +650,350 @@ def test_failed_settlement_flush_rolls_back_payment_and_actor(
     assert client.get(f"/api/v1/groups/{trip['id']}/settlements").json() == []
     assert db_session.get(UserRow, DEVELOPMENT_ACTOR.id) is None
     assert balances(client, trip["id"]) == {alice["id"]: 0, bob["id"]: 0}
+
+
+@pytest.fixture
+def correction_trip(client: TestClient) -> tuple[str, list[str], dict, dict]:
+    gid = group(client)["id"]
+    ids = [member(client, gid, name)["id"] for name in ("Alice", "Bob", "Charlie")]
+    expense = client.post(
+        f"/api/v1/groups/{gid}/expenses", json=equal_payload(ids[0], ids)
+    ).json()
+    payment = {
+        "from_member_id": ids[1],
+        "to_member_id": ids[0],
+        "amount": 300,
+        "occurred_at": OCCURRED,
+    }
+    return gid, ids, expense, payment
+
+
+def test_expense_void_keeps_original_and_restores_empty_ledger(client, correction_trip):
+    gid, ids, original, _ = correction_trip
+    assert balances(client, gid) == dict(zip(ids, (600, -300, -300), strict=True))
+    path = f"/api/v1/groups/{gid}/expenses/{original['id']}"
+    response = client.post(path + "/void", json={"reason": "Wrong receipt"})
+    assert response.status_code == 200, response.text
+    voided = response.json()
+    assert voided["status"] == "voided"
+    assert voided["void_reason"] == "Wrong receipt"
+    assert voided["void_created_by_user_id"] == str(DEVELOPMENT_ACTOR.id)
+    assert voided["void_created_at"]
+    assert voided["amount"] == original["amount"]
+    assert voided["splits"] == original["splits"]
+    assert client.get(path).json() == voided
+    assert client.get(f"/api/v1/groups/{gid}/expenses").json() == [voided]
+    assert balances(client, gid) == dict.fromkeys(ids, 0)
+    assert (
+        client.get(f"/api/v1/groups/{gid}/settlement-suggestions").json()["suggestions"]
+        == []
+    )
+    assert client.post(path + "/void", json={"reason": "Again"}).status_code == 409
+    assert (
+        client.post(
+            path + "/corrections",
+            json={"reason": "Again", "replacement": equal_payload(ids[0], ids)},
+        ).status_code
+        == 409
+    )
+
+
+@pytest.mark.parametrize("strategy", ["equal", "exact"])
+def test_expense_correction_and_chain_preserve_original_splits(
+    client, correction_trip, strategy
+):
+    gid, ids, original, _ = correction_trip
+    path = f"/api/v1/groups/{gid}/expenses"
+    payload = equal_payload(ids[0], ids, 990)
+    if strategy == "exact":
+        payload.pop("participant_member_ids")
+        payload.update(
+            split_strategy="exact",
+            splits=[{"member_id": mid, "amount": 330} for mid in ids],
+        )
+    response = client.post(
+        f"{path}/{original['id']}/corrections",
+        json={"reason": "Receipt total", "replacement": payload},
+    )
+    assert response.status_code == 201, response.text
+    replacement = response.json()
+    assert replacement["id"] != original["id"]
+    assert replacement["created_at"] != original["created_at"]
+    assert replacement["replaces_id"] == original["id"]
+    assert replacement["status"] == "active"
+    assert replacement["split_strategy"] == strategy
+    assert balances(client, gid) == dict(zip(ids, (660, -330, -330), strict=True))
+    stored = client.get(f"{path}/{original['id']}").json()
+    for field in (
+        "amount",
+        "splits",
+        "description",
+        "payer_member_id",
+        "occurred_at",
+        "created_at",
+    ):
+        assert stored[field] == original[field]
+    assert stored["status"] == "voided"
+    assert stored["replaced_by_id"] == replacement["id"]
+    assert (
+        client.post(
+            f"{path}/{original['id']}/corrections",
+            json={"reason": "Again", "replacement": payload},
+        ).status_code
+        == 409
+    )
+    third = client.post(
+        f"{path}/{replacement['id']}/corrections",
+        json={
+            "reason": "Second correction",
+            "replacement": equal_payload(ids[0], ids, 1200),
+        },
+    ).json()
+    middle = client.get(f"{path}/{replacement['id']}").json()
+    assert middle["status"] == "voided"
+    assert middle["replaces_id"] == original["id"]
+    assert middle["replaced_by_id"] == third["id"]
+    assert third["replaces_id"] == replacement["id"]
+    assert len(client.get(path).json()) == 3
+    assert balances(client, gid) == dict(zip(ids, (800, -400, -400), strict=True))
+    assert (
+        client.post(
+            f"{path}/{third['id']}/void", json={"reason": "Remove event"}
+        ).status_code
+        == 200
+    )
+    assert balances(client, gid) == dict.fromkeys(ids, 0)
+
+
+def test_settlement_void_restores_pre_payment_balances(client, correction_trip):
+    gid, ids, _, payload = correction_trip
+    path = f"/api/v1/groups/{gid}/settlements"
+    original = client.post(path, json=payload).json()
+    assert balances(client, gid) == dict(zip(ids, (300, 0, -300), strict=True))
+    response = client.post(
+        f"{path}/{original['id']}/void", json={"reason": "Payment never happened"}
+    )
+    assert response.status_code == 200, response.text
+    voided = response.json()
+    assert voided["status"] == "voided"
+    assert voided["amount"] == 300
+    assert voided["created_at"] == original["created_at"]
+    assert voided["void_created_by_user_id"] == str(DEVELOPMENT_ACTOR.id)
+    assert client.get(path).json() == [voided]
+    assert balances(client, gid) == dict(zip(ids, (600, -300, -300), strict=True))
+    assert sorted(
+        item["amount"]
+        for item in client.get(f"/api/v1/groups/{gid}/settlement-suggestions").json()[
+            "suggestions"
+        ]
+    ) == [300, 300]
+    assert (
+        client.post(
+            f"{path}/{original['id']}/void", json={"reason": "Again"}
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(
+            f"{path}/{original['id']}/corrections",
+            json={"reason": "Again", "replacement": payload},
+        ).status_code
+        == 409
+    )
+
+
+def test_settlement_correction_amount_and_members_chain(client, correction_trip):
+    gid, ids, _, payload = correction_trip
+    path = f"/api/v1/groups/{gid}/settlements"
+    original = client.post(path, json=payload).json()
+    response = client.post(
+        f"{path}/{original['id']}/corrections",
+        json={"reason": "Only paid 200", "replacement": {**payload, "amount": 200}},
+    )
+    assert response.status_code == 201, response.text
+    replacement = response.json()
+    assert replacement["id"] != original["id"]
+    assert replacement["replaces_id"] == original["id"]
+    assert balances(client, gid) == dict(zip(ids, (400, -100, -300), strict=True))
+    third = client.post(
+        f"{path}/{replacement['id']}/corrections",
+        json={
+            "reason": "Wrong travelers",
+            "replacement": {
+                **payload,
+                "from_member_id": ids[0],
+                "to_member_id": ids[2],
+                "amount": 100,
+            },
+        },
+    ).json()
+    history = {item["id"]: item for item in client.get(path).json()}
+    assert history[original["id"]]["amount"] == 300
+    assert history[original["id"]]["status"] == "voided"
+    assert history[original["id"]]["replaced_by_id"] == replacement["id"]
+    assert history[replacement["id"]]["status"] == "voided"
+    assert history[replacement["id"]]["replaced_by_id"] == third["id"]
+    assert third["status"] == "active"
+    assert balances(client, gid) == dict(zip(ids, (700, -300, -400), strict=True))
+    assert (
+        client.post(f"{path}/{third['id']}/void", json={"reason": "Remove"}).status_code
+        == 200
+    )
+    assert balances(client, gid) == dict(zip(ids, (600, -300, -300), strict=True))
+
+
+@pytest.mark.parametrize("kind", ["expenses", "settlements"])
+@pytest.mark.parametrize("operation", ["void", "corrections"])
+def test_void_and_correction_scope_and_missing_targets(
+    client, correction_trip, kind, operation
+):
+    gid, _, expense, payment = correction_trip
+    target = (
+        expense
+        if kind == "expenses"
+        else client.post(f"/api/v1/groups/{gid}/settlements", json=payment).json()
+    )
+    replacement = (
+        equal_payload(
+            expense["payer_member_id"],
+            [split["member_id"] for split in expense["splits"]],
+        )
+        if kind == "expenses"
+        else payment
+    )
+    request = {"reason": "Wrong group"}
+    if operation == "corrections":
+        request["replacement"] = replacement
+    other_gid = group(client, "Other")["id"]
+    for scoped_gid, target_id in [
+        (other_gid, target["id"]),
+        (gid, str(uuid4())),
+        (str(uuid4()), target["id"]),
+    ]:
+        response = client.post(
+            f"/api/v1/groups/{scoped_gid}/{kind}/{target_id}/{operation}", json=request
+        )
+        assert response.status_code == 404, response.text
+    assert balances(client, gid)[expense["payer_member_id"]] == (
+        600 if kind == "expenses" else 300
+    )
+
+
+@pytest.mark.parametrize("kind", ["expenses", "settlements"])
+@pytest.mark.parametrize(
+    "invalid", ["blank_reason", "amount", "financial", "partial", "naive_time"]
+)
+def test_invalid_correction_rolls_back(client, correction_trip, kind, invalid):
+    gid, ids, expense, payment = correction_trip
+    target = (
+        expense
+        if kind == "expenses"
+        else client.post(f"/api/v1/groups/{gid}/settlements", json=payment).json()
+    )
+    replacement = (
+        equal_payload(ids[0], ids, 990)
+        if kind == "expenses"
+        else {**payment, "amount": 200}
+    )
+    request = {"reason": "Fix", "replacement": replacement}
+    if invalid == "blank_reason":
+        request["reason"] = "  "
+    elif invalid == "amount":
+        replacement["amount"] = 0
+    elif invalid == "financial":
+        if kind == "expenses":
+            replacement["participant_member_ids"] = [ids[0], ids[0]]
+        else:
+            replacement["to_member_id"] = replacement["from_member_id"]
+    elif invalid == "partial":
+        request["replacement"] = {"amount": 990}
+    else:
+        replacement["occurred_at"] = "2026-10-03T12:00:00"
+    path = f"/api/v1/groups/{gid}/{kind}"
+    response = client.post(f"{path}/{target['id']}/corrections", json=request)
+    assert response.status_code == 422, response.text
+    assert client.get(path).json() == [target]
+
+
+@pytest.mark.parametrize("kind", ["expense", "settlement"])
+@pytest.mark.parametrize("stage", ["replacement", "void"])
+def test_correction_failure_after_flush_is_atomic(
+    client, correction_trip, monkeypatch, kind, stage
+):
+    gid, ids, expense, payment = correction_trip
+    target = (
+        expense
+        if kind == "expense"
+        else client.post(f"/api/v1/groups/{gid}/settlements", json=payment).json()
+    )
+    path = f"/api/v1/groups/{gid}/{kind}s"
+    replacement = (
+        equal_payload(ids[0], ids, 990)
+        if kind == "expense"
+        else {**payment, "amount": 200}
+    )
+    before_balances = balances(client, gid)
+    method_name = f"save_{kind}" + ("_void" if stage == "void" else "")
+    original_save = getattr(LedgerRepository, method_name)
+
+    def fail_after_flush(self, value):
+        original_save(self, value)
+        raise IntegrityError("forced failure", {}, Exception("test rollback"))
+
+    monkeypatch.setattr(LedgerRepository, method_name, fail_after_flush)
+    response = client.post(
+        f"{path}/{target['id']}/corrections",
+        json={"reason": "Fix", "replacement": replacement},
+    )
+    assert response.status_code == 422
+    assert client.get(path).json() == [target]
+    assert balances(client, gid) == before_balances
+    assert client.get(f"/api/v1/groups/{gid}/settlement-suggestions").status_code == 200
+
+
+@pytest.mark.parametrize("kind", ["expense", "settlement"])
+@pytest.mark.parametrize("operation", ["void", "corrections"])
+def test_stale_active_check_duplicate_void_maps_to_conflict(
+    client, correction_trip, monkeypatch, kind, operation
+):
+    gid, ids, expense, payment = correction_trip
+    target = (
+        expense
+        if kind == "expense"
+        else client.post(f"/api/v1/groups/{gid}/settlements", json=payment).json()
+    )
+    path = f"/api/v1/groups/{gid}/{kind}s"
+    assert (
+        client.post(f"{path}/{target['id']}/void", json={"reason": "First"}).status_code
+        == 200
+    )
+    before = client.get(path).json()
+    # Simulate a stale read; real PostgreSQL then rejects the duplicate PK.
+    monkeypatch.setattr(LedgerRepository, f"get_{kind}_void", lambda *_: None)
+    request = {"reason": "Competing attempt"}
+    if operation == "corrections":
+        request["replacement"] = (
+            equal_payload(ids[0], ids, 990)
+            if kind == "expense"
+            else {**payment, "amount": 200}
+        )
+    response = client.post(f"{path}/{target['id']}/{operation}", json=request)
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"] == "record already voided or corrected"
+    assert client.get(path).json() == before
+
+
+@pytest.mark.parametrize("kind", ["expenses", "settlements"])
+def test_blank_void_reason_keeps_record_active(client, correction_trip, kind):
+    gid, _, expense, payment = correction_trip
+    target = (
+        expense
+        if kind == "expenses"
+        else client.post(f"/api/v1/groups/{gid}/settlements", json=payment).json()
+    )
+    path = f"/api/v1/groups/{gid}/{kind}"
+    assert (
+        client.post(f"{path}/{target['id']}/void", json={"reason": "  "}).status_code
+        == 422
+    )
+    assert client.get(path).json() == [target]

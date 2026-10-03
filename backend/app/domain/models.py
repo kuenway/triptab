@@ -162,3 +162,45 @@ class Settlement:
         _require_aware_datetime("occurred_at", self.occurred_at)
         _require_aware_datetime("created_at", self.created_at)
         _require_uuid("created_by_user_id", self.created_by_user_id)
+
+
+@dataclass(frozen=True, slots=True)
+class ExpenseVoid:
+    expense_id: UUID
+    group_id: UUID
+    reason: str
+    created_at: datetime
+    created_by_user_id: UUID
+    replacement_id: UUID | None = None
+
+    def __post_init__(self) -> None:
+        _require_uuid("expense_id", self.expense_id)
+        _require_uuid("group_id", self.group_id)
+        _require_nonblank("reason", self.reason)
+        _require_aware_datetime("created_at", self.created_at)
+        _require_uuid("created_by_user_id", self.created_by_user_id)
+        if self.replacement_id is not None:
+            _require_uuid("replacement_id", self.replacement_id)
+            if self.replacement_id == self.expense_id:
+                raise DomainValidationError("replacement must be a new record")
+
+
+@dataclass(frozen=True, slots=True)
+class SettlementVoid:
+    settlement_id: UUID
+    group_id: UUID
+    reason: str
+    created_at: datetime
+    created_by_user_id: UUID
+    replacement_id: UUID | None = None
+
+    def __post_init__(self) -> None:
+        _require_uuid("settlement_id", self.settlement_id)
+        _require_uuid("group_id", self.group_id)
+        _require_nonblank("reason", self.reason)
+        _require_aware_datetime("created_at", self.created_at)
+        _require_uuid("created_by_user_id", self.created_by_user_id)
+        if self.replacement_id is not None:
+            _require_uuid("replacement_id", self.replacement_id)
+            if self.replacement_id == self.settlement_id:
+                raise DomainValidationError("replacement must be a new record")

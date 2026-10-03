@@ -168,6 +168,7 @@ class ExpenseSplitRow(Base):
 class SettlementRow(Base):
     __tablename__ = "settlements"
     __table_args__ = (
+        UniqueConstraint("id", "group_id", name="uq_settlements_id_group_id"),
         ForeignKeyConstraint(
             ["group_id", "from_member_id"],
             ["group_members.group_id", "group_members.id"],
@@ -204,4 +205,80 @@ class SettlementRow(Base):
         PG_UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
+    )
+
+
+class ExpenseVoidRow(Base):
+    __tablename__ = "expense_voids"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["expense_id", "group_id"],
+            ["expenses.id", "expenses.group_id"],
+            name="fk_expense_voids_target_group",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["replacement_id", "group_id"],
+            ["expenses.id", "expenses.group_id"],
+            name="fk_expense_voids_replacement_group",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("length(trim(reason)) > 0", name="reason_nonblank"),
+        CheckConstraint("replacement_id <> expense_id", name="new_replacement"),
+        Index("ix_expense_voids_group_id", "group_id"),
+    )
+
+    expense_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    group_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    replacement_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        nullable=True,
+        unique=True,
+    )
+
+
+class SettlementVoidRow(Base):
+    __tablename__ = "settlement_voids"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["settlement_id", "group_id"],
+            ["settlements.id", "settlements.group_id"],
+            name="fk_settlement_voids_target_group",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["replacement_id", "group_id"],
+            ["settlements.id", "settlements.group_id"],
+            name="fk_settlement_voids_replacement_group",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("length(trim(reason)) > 0", name="reason_nonblank"),
+        CheckConstraint("replacement_id <> settlement_id", name="new_replacement"),
+        Index("ix_settlement_voids_group_id", "group_id"),
+    )
+
+    settlement_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    group_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    replacement_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        nullable=True,
+        unique=True,
     )

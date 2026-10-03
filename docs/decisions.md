@@ -13,3 +13,8 @@ not implement the related domain behavior.
   implement them when a milestone introduces a concrete need.
 - Frontend tests start when frontend logic exists. Add an end-to-end test when an
   end-to-end user flow exists.
+
+Milestone 8 implements immutable history with separate void rows. Replacement
+links live on those rows, and balances use effective records selected before
+accounting. Audit metadata extends existing retrieval responses and history
+sections; no combined timeline or generic event-sourcing layer is needed.

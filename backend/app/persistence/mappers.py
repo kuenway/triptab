@@ -3,17 +3,21 @@
 from app.domain import (
     Expense,
     ExpenseSplit,
+    ExpenseVoid,
     Group,
     GroupMember,
     Settlement,
+    SettlementVoid,
     SplitStrategy,
     User,
 )
 from app.persistence.models import (
     ExpenseRow,
+    ExpenseVoidRow,
     GroupMemberRow,
     GroupRow,
     SettlementRow,
+    SettlementVoidRow,
     UserRow,
 )
 
@@ -68,4 +72,26 @@ def settlement_from_row(row: SettlementRow) -> Settlement:
         occurred_at=row.occurred_at,
         created_at=row.created_at,
         created_by_user_id=row.created_by_user_id,
+    )
+
+
+def expense_void_from_row(row: ExpenseVoidRow) -> ExpenseVoid:
+    return ExpenseVoid(
+        expense_id=row.expense_id,
+        group_id=row.group_id,
+        reason=row.reason,
+        created_at=row.created_at,
+        created_by_user_id=row.created_by_user_id,
+        replacement_id=row.replacement_id,
+    )
+
+
+def settlement_void_from_row(row: SettlementVoidRow) -> SettlementVoid:
+    return SettlementVoid(
+        settlement_id=row.settlement_id,
+        group_id=row.group_id,
+        reason=row.reason,
+        created_at=row.created_at,
+        created_by_user_id=row.created_by_user_id,
+        replacement_id=row.replacement_id,
     )
