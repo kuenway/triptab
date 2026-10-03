@@ -1,7 +1,8 @@
 # Expense Sharing
 
-Milestone 0 establishes the development environment. The frontend is a placeholder,
-the backend exposes only `/health`, and PostgreSQL has no application schema yet.
+The frontend is a placeholder and the backend exposes only `/health`. The pure
+domain and accounting layers and a PostgreSQL persistence layer are available to
+backend code. There are no product API routes yet.
 
 ## Requirements
 
@@ -19,6 +20,7 @@ cp .env.example .env
 docker compose up -d db
 cd backend
 uv sync --python 3.11
+uv run --env-file ../.env alembic upgrade head
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
@@ -57,3 +59,5 @@ volume retains local data. Only remove the volume deliberately when the data is
 no longer needed.
 
 See [foundation decisions](docs/decisions.md) for the approved domain constraints.
+For database migration, transaction, and integration-test commands, see
+[persistence documentation](docs/persistence.md).
