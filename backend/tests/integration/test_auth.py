@@ -7,7 +7,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.application.auth import COOKIE_NAME, PASSWORD_HASHER, token_hash
+from app.application.auth import PASSWORD_HASHER, token_hash
+from app.config import COOKIE_NAME, get_settings
 from app.persistence.models import AuthSessionRow, UserRow
 
 pytestmark = pytest.mark.integration
@@ -225,6 +226,7 @@ def test_secure_cookie_is_default_when_local_override_is_absent(
     raw_client, monkeypatch
 ):
     monkeypatch.delenv("TRIPTAB_COOKIE_SECURE")
+    get_settings.cache_clear()  # Configuration changes require a process restart.
     response = raw_client.post("/api/v1/auth/register", json=ACCOUNT)
     assert response.status_code == 201
     assert "Secure" in response.headers["set-cookie"]

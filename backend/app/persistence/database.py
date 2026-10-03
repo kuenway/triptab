@@ -1,17 +1,17 @@
 """Explicit engine and session factory construction."""
 
-import os
-
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.config import get_settings
+
 
 def database_url() -> str:
-    url = os.environ.get("DATABASE_URL")
-    if not url:
+    url = get_settings().database_url
+    if url is None:
         raise RuntimeError("DATABASE_URL is required for PostgreSQL operations")
-    return url
+    return url.get_secret_value()
 
 
 def make_engine(url: str | None = None) -> Engine:
@@ -19,7 +19,15 @@ def make_engine(url: str | None = None) -> Engine:
     parsed = make_url(selected)
     if parsed.drivername != "postgresql+psycopg" or not parsed.database:
         raise ValueError("database URL must use postgresql+psycopg and name a database")
-    return create_engine(selected, pool_pre_ping=True)
+    return create_engine(
+        selected,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=0,
+        pool_timeout=5,
+        connect_args={"connect_timeout": 5},
+        hide_parameters=True,
+    )
 
 
 def make_session_factory(engine: Engine) -> sessionmaker[Session]:

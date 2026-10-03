@@ -1,6 +1,5 @@
 """Safe HTTP authentication contracts and explicitly configured cookies."""
 
-import os
 from typing import Annotated
 from uuid import UUID
 
@@ -13,7 +12,9 @@ from app.api.dependencies import (
     require_origin,
 )
 from app.api.schemas import RequestModel
-from app.application.auth import COOKIE_NAME, SESSION_SECONDS, AuthContext, AuthService
+from app.application.auth import AuthContext, AuthService
+from app.config import get_settings
+from app.operations import require_auth_rate_limit
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -57,20 +58,14 @@ class AuthResponse(RequestModel):
         )
 
 
-def cookie_secure() -> bool:
-    value = os.environ.get("TRIPTAB_COOKIE_SECURE", "true").lower()
-    if value not in {"true", "false"}:
-        raise RuntimeError("TRIPTAB_COOKIE_SECURE must be true or false")
-    return value == "true"
-
-
 def set_session_cookie(response: Response, token: str) -> None:
+    settings = get_settings()
     response.set_cookie(
-        COOKIE_NAME,
+        settings.cookie_name,
         token,
-        max_age=SESSION_SECONDS,
+        max_age=settings.session_seconds,
         path="/api/v1",
-        secure=cookie_secure(),
+        secure=settings.cookie_secure,
         httponly=True,
         samesite="lax",
     )
@@ -81,7 +76,7 @@ def set_session_cookie(response: Response, token: str) -> None:
     "/register",
     response_model=AuthResponse,
     status_code=201,
-    dependencies=[Depends(require_origin)],
+    dependencies=[Depends(require_origin), Depends(require_auth_rate_limit)],
 )
 def register(
     payload: RegisterRequest,
@@ -93,14 +88,16 @@ def register(
         str(payload.email),
         payload.password.get_secret_value(),
         payload.display_name,
-        request.cookies.get(COOKIE_NAME),
+        request.cookies.get(get_settings().cookie_name),
     )
     set_session_cookie(response, token)
     return AuthResponse.from_context(context)
 
 
 @router.post(
-    "/login", response_model=AuthResponse, dependencies=[Depends(require_origin)]
+    "/login",
+    response_model=AuthResponse,
+    dependencies=[Depends(require_origin), Depends(require_auth_rate_limit)],
 )
 def login(
     payload: LoginRequest,
@@ -111,7 +108,7 @@ def login(
     context, token = AuthService(session).login(
         str(payload.email),
         payload.password.get_secret_value(),
-        request.cookies.get(COOKIE_NAME),
+        request.cookies.get(get_settings().cookie_name),
     )
     set_session_cookie(response, token)
     return AuthResponse.from_context(context)
@@ -129,9 +126,9 @@ def logout(
 ) -> None:
     AuthService(session).logout(context.session_id)
     response.delete_cookie(
-        COOKIE_NAME,
+        get_settings().cookie_name,
         path="/api/v1",
-        secure=cookie_secure(),
+        secure=get_settings().cookie_secure,
         httponly=True,
         samesite="lax",
     )

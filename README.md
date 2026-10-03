@@ -82,7 +82,7 @@ From `frontend/`:
 npm run lint
 npm run typecheck
 npm test
-npm run build
+TRIPTAB_API_ORIGIN=http://127.0.0.1:8000 npm run build
 ```
 
 From the repository root, stop PostgreSQL with `docker compose down`. Its named
@@ -117,6 +117,14 @@ frontend servers on ports 8100 and 3100 and stops them after the suite. GitHub C
 provides its own PostgreSQL service, migrates its browser-test database, installs
 Chromium, and runs the same suite. Server-side idempotency is deferred; UI
 submission guards do not guarantee exactly-once payment recording.
+
+To run the same flows against the production frontend, build with
+`TRIPTAB_API_ORIGIN=http://127.0.0.1:8100 npm run build`, then add
+`E2E_PRODUCTION=true` to the browser-test command. CI uses this production mode.
+
+For production configuration, startup, readiness, request logs, rate limits,
+backup/restore and the pre-deployment gate, see [TripTab operations](docs/operations.md).
+No hosting provider is configured or deployed yet.
 
 
 Financial mistakes can be corrected from expense and payment history. Correct

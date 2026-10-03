@@ -23,6 +23,10 @@ See the [Argon2 library API](https://argon2-cffi.readthedocs.io/en/stable/api.ht
 There is no email verification, reset, OAuth, user directory, or disabled-account
 management in M9.
 
+M10 centralizes configuration and adds bounded authentication rate limits, safe
+request diagnostics and production safeguards without changing these semantics.
+See [operations](operations.md) for configuration and limits.
+
 ## Sessions and cookies
 
 A successful registration or login generates a 256-bit random opaque session

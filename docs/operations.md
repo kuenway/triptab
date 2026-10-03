@@ -1,0 +1,182 @@
+# TripTab operations
+
+M10 prepares a single-instance application; it does not deploy one. Local Compose
+remains PostgreSQL development infrastructure. Application Dockerfiles are deferred
+until a hosting target is chosen: locked uv installs and Next.js builds already
+provide portable artifacts without a second deployment configuration.
+
+## Configuration
+
+`app/config.py` is the backend environment boundary, validated before serving.
+Configuration is cached per process; restart after changes. It does not load `.env`
+implicitly. Supply environment externally, or explicitly use `uv run --env-file`
+for development. Never print configuration secrets.
+
+| Variable | Default / requirement |
+| --- | --- |
+| `TRIPTAB_ENV` | `development`, `test`, or `production`; explicitly set production |
+| `DATABASE_URL` | `postgresql+psycopg://...`; required for DB operations and production |
+| `TRIPTAB_ALLOWED_ORIGINS` | Comma-separated exact browser origins; absent denies mutations; production requires HTTPS |
+| `TRIPTAB_COOKIE_NAME` | `triptab_session`; changing it invalidates browser cookies |
+| `TRIPTAB_COOKIE_SECURE` | `true`; development/test HTTP can explicitly use `false` |
+| `TRIPTAB_SESSION_SECONDS` | `604800`; permitted 300–2592000 seconds; new sessions only |
+| `TRIPTAB_LOG_LEVEL` | `INFO`; DEBUG/INFO/WARNING/ERROR; production rejects DEBUG |
+| `TRIPTAB_DEBUG` | `false`; production rejects `true` |
+| `TRIPTAB_AUTH_RATE_LIMIT` | 10 authentication POSTs per client IP per window |
+| `TRIPTAB_AUTH_GLOBAL_LIMIT` | 100 authentication POSTs total per window |
+| `TRIPTAB_AUTH_RATE_WINDOW` | 60 seconds; permitted 1–3600 |
+
+Rate counts must be positive and at most 10000. Cookies retain HttpOnly,
+SameSite=Lax, host-only scope and `/api/v1` Path. `__Host-` names are rejected because
+this path is not `/`. Production requires a database host, user and nonempty
+non-example password, rejects known local/CI/example credentials, and rejects
+missing, wildcard, malformed, or non-HTTPS browser origins. Production disables
+public API documentation. There is no auth bypass setting.
+
+Root `.env.example` contains public local-only credentials. Never reuse them in
+production. Use dedicated database roles, generated credentials, least privilege,
+and validated PostgreSQL TLS (prefer `sslmode=verify-full` with the correct CA).
+Credential files should be mode 0600 and outside Git. Roles/TLS are provisioned
+separately; the application does not configure them.
+
+## Production startup and releases
+
+Supply production environment/secrets externally. From `backend/`:
+
+```sh
+uv sync --locked --no-dev --python 3.11
+uv run --locked --no-dev python -c 'from app.config import get_settings; get_settings(); print("configuration valid")'
+uv run --locked --no-dev alembic upgrade head
+uv run --locked --no-dev alembic check
+uv run --locked --no-dev uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --limit-concurrency 8 --no-access-log --no-proxy-headers
+```
+
+Run migrations **once per release**, before the new build serves traffic; stop/drain
+existing traffic where necessary. Web startup never migrates. Migrations 0001–0003
+remain unchanged; M10 has no schema revision. Test clean/populated upgrades, back up
+before changes, and retain the prior build. Returning to an old build requires
+schema compatibility. Downgrades can discard credentials, sessions, roles or void
+metadata, so they are not routine rollback. Restore to a separate database when
+needed, then deliberately switch traffic and account for writes since the backup.
+
+From `frontend/`, set server-only `TRIPTAB_API_ORIGIN` to the private backend
+HTTP(S) origin at **both build and startup**:
+
+```sh
+npm ci
+npm run build
+npm run start -- --hostname 127.0.0.1 --port 3000
+```
+
+This origin must contain no credentials/path/query and is required in production.
+Rewrites are embedded in the build; rebuild when their target changes. The browser
+continues to request same-origin `/api/v1`. No secret belongs in `NEXT_PUBLIC_*`.
+Production uses neither Next.js dev nor Uvicorn reload. Size memory for Next.js
+and concurrent Argon2 work; the documented backend concurrency cap bounds that work.
+
+Use a TLS ingress for `/` and `/api/*`, preferably routing API traffic directly to
+FastAPI. Preserve the browser's Origin. CORS stays disabled and CSRF requires both
+allowed Origin and the session token. The command above ignores forwarded headers.
+For client-IP limiting behind ingress, strip client-supplied forwarding headers
+there and enable Uvicorn proxy headers only for explicit trusted IPs using
+`--forwarded-allow-ips`, never `*`. If Next.js rewrites proxy production API traffic,
+do not blindly trust its forwarded client headers: sanitize at ingress or retain
+socket-IP limiting, which shares one bucket across proxied clients. Validate the
+chosen topology before release. Configure HSTS at TLS ingress after verifying HTTPS.
+
+## Health, diagnostics and browser headers
+
+`GET /health` reports process liveness without DB access. `/ready` executes
+`SELECT 1` and returns 200 or generic 503 without connection details. It does not
+replace migration checks. SQLAlchemy uses pre-ping, five pooled connections, no
+overflow, five-second pool/connect timeouts, hidden SQL parameters, and existing
+application-owned transactions. Pools close at shutdown.
+
+Request logs are JSON on stderr: timestamp, level, canonical UUID request ID,
+method, route template, status, duration and error category. Valid UUID
+`X-Request-ID` values are normalized; others are replaced. Every response echoes
+it. Unknown paths use `<unmatched>` rather than arbitrary input. Bodies, queries,
+cookies, auth headers, passwords/hashes, bearer/CSRF tokens and DB credentials are
+excluded. Unexpected failures return generic 500 with request ID and log exception
+type plus file basename/function/line frames, excluding exception text, source and
+locals. Disable raw Uvicorn access logs as above; ingress logs must omit queries
+and sensitive headers too.
+
+API responses use no-store, nosniff, no-referrer, frame denial and restrictive API
+CSP. Frontend pages use nosniff/no-referrer plus CSP `frame-ancestors 'none'`,
+`base-uri 'self'`, `object-src 'none'`, `form-action 'self'`, and legacy frame denial.
+This targeted CSP protects embedding/navigation without breaking Next.js inline
+hydration; it is **not** a strict script/XSS CSP. Nonce-based dynamic rendering is
+deferred. See [Next.js CSP guidance](https://nextjs.org/docs/app/guides/content-security-policy).
+
+## Authentication limits and retention
+
+Login and registration share a locked, process-local fixed-window counter, per IP
+and globally. Rejections return 429 and `Retry-After` before password work. The
+global cap bounds tracked IP memory. Window boundaries allow a double burst;
+restarts reset counts. This supports the initial **one-worker, single-instance**
+deployment, not horizontal scaling. Shared limiting belongs to later scaling;
+no Redis or account lockouts are added. Ordinary financial APIs are unaffected.
+M9 Argon2id, generic failures, hashed sessions, expiry/revocation/logout and group
+authorization remain intact. Financial history is never operationally purged.
+Expired/revoked session cleanup remains deferred.
+
+## Backup and recovery
+
+Use PostgreSQL 17 native tools compatible with the deployed server. `pg_dump -Fc`
+creates a consistent logical archive while PostgreSQL runs. Never copy live Docker
+volume files as a backup. Archives contain account hashes, session material and
+private financial data: encrypt them, restrict access, store off-host, and define
+frequency/retention for acceptable data loss. Use protected PostgreSQL service and
+password files or runtime secrets rather than command-line credential URLs.
+
+```sh
+umask 077
+PGSERVICE=triptab pg_dump -Fc --file=/secure/backups/triptab.dump
+PGSERVICE=triptab_admin createdb --owner=triptab triptab_restore_test
+PGSERVICE=triptab_admin pg_restore --exit-on-error --no-owner --no-acl --role=triptab --dbname=triptab_restore_test /secure/backups/triptab.dump
+```
+
+`PGSERVICE` refers to protected operator service configuration. Restore to an empty
+**separate** database with a suitable owner; never use `--clean` on the live DB.
+Point verification `DATABASE_URL` at the restored DB, inspect its Alembic revision,
+upgrade if needed and run `alembic check`. Compare users, memberships, financial
+rows, void/replacement links and balances against expected backup data; check
+health/readiness. Retain the source until accepted and remove only the disposable
+verification DB. Do not run tests blindly on a real restored DB; fixtures intentionally
+require `*_test`. See [pg_dump](https://www.postgresql.org/docs/17/app-pgdump.html)
+and [pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html).
+
+Before routing real traffic to a recovered database, revoke restored login sessions
+so an older backup cannot resurrect a previously logged-out session. Require users
+to log in again. This changes auth revocation metadata only, never financial history.
+The synthetic drill verifies exact session preservation using an already-revoked session.
+
+Repeat the synthetic **local Compose** drill from `backend/`:
+
+```sh
+uv run --env-file ../.env python scripts/restore_drill.py
+```
+
+It creates two disposable databases, upgrades a clean DB, creates owner/guests,
+corrected expenses/payments and void history, dumps/restores with the container's
+tools, checks every persisted row and derived balances, then removes both DBs.
+The archive stays in memory; no real user data or artifact is retained. This
+validates mechanics, not a configured production backup schedule or recovery SLA.
+
+## Pre-deployment gate (Milestone 11)
+
+- Provision PostgreSQL, dedicated roles, validated TLS and generated credentials.
+- Configure encrypted off-host backups, retention and an acceptable recovery point.
+- Supply production mode, secrets, exact HTTPS origins and Secure cookies.
+- Configure TLS ingress, forwarded-header trust and client-IP rate-limit behavior.
+- Pass CI, configuration checks, production builds and browser flows.
+- Run the single migration step; verify schema and data compatibility.
+- Verify HTTPS authentication, cookie/CSRF behavior and browser security headers.
+- Verify health/readiness, safe request logs and resource/concurrency settings.
+- Validate a restore and compare history; document who performs recovery.
+
+Hosting, application containers, distributed limiting, cleanup workers, monitoring
+SaaS, strict-script CSP, reset/verification/OAuth, invitations, idempotency, ledger
+versions and multi-currency remain deferred. Reassess dependency advisories at
+deployment; a vulnerability scan is not a security guarantee.

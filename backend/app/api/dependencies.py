@@ -1,22 +1,28 @@
 """Canonical cookie authentication and one caller-owned financial session."""
 
-import os
 import secrets
 from collections.abc import Iterator
 from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, Request
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.application.auth import COOKIE_NAME, AuthContext, AuthService, PermissionDenied
+from app.application.auth import AuthContext, AuthService, PermissionDenied
 from app.application.service import TripTabService
+from app.config import get_settings
 from app.persistence.database import make_engine, make_session_factory
 
 
 @lru_cache(maxsize=1)
+def get_engine() -> Engine:
+    return make_engine()
+
+
+@lru_cache(maxsize=1)
 def _session_factory() -> sessionmaker[Session]:
-    return make_session_factory(make_engine())
+    return make_session_factory(get_engine())
 
 
 def get_session() -> Iterator[Session]:
@@ -33,11 +39,7 @@ AuthSessionDependency = Annotated[Session, Depends(get_auth_session)]
 
 
 def require_origin(request: Request) -> None:
-    allowed = {
-        value.strip()
-        for value in os.environ.get("TRIPTAB_ALLOWED_ORIGINS", "").split(",")
-        if value.strip()
-    }
+    allowed = get_settings().allowed_origins
     origin = request.headers.get("Origin")
     if not origin or origin == "null" or origin not in allowed:
         raise PermissionDenied("request origin not allowed")
@@ -46,7 +48,9 @@ def require_origin(request: Request) -> None:
 def get_current_user(request: Request, session: AuthSessionDependency) -> AuthContext:
     # End the read transaction before a use case starts its own write transaction.
     with session:
-        context = AuthService(session).authenticate(request.cookies.get(COOKIE_NAME))
+        context = AuthService(session).authenticate(
+            request.cookies.get(get_settings().cookie_name)
+        )
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         require_origin(request)
         token = request.headers.get("X-CSRF-Token", "")

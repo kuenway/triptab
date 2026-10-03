@@ -10,7 +10,9 @@ immutable domain values before accounting runs. Neither `app/domain` nor
 caller owns `with session.begin():` and therefore commit or rollback. Repository
 methods validate group financial context, add rows, and flush, but never commit.
 An expense and every split must be saved in the same caller transaction. The
-versioned migrations in `backend/migrations/` are the schema authority.
+versioned migrations in `backend/migrations/` are the schema authority. M10 retains
+these boundaries, adds bounded pre-ping pooling, and documents single-release
+migrations and native backup/restore in [operations](operations.md).
 
 The schema uses UUID keys, `timestamptz` for event and recording times, and
 `BIGINT` for integer NTD. Composite foreign keys prevent cross-group payer,

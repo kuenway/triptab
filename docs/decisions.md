@@ -24,3 +24,10 @@ explicit Secure-cookie configuration, session-bound CSRF tokens and Origin check
 and account-linked owner/member authorization. New groups create owner membership
 atomically. Legacy financial history is retained without inventing ownership.
 Inviting/linking additional registered members is deferred; owners can add guests.
+
+Milestone 10 adds validated production configuration, readiness, allowlisted JSON
+request logs, browser headers and bounded process-local authentication rate limits.
+The initial deployment uses one backend worker. Releases migrate once before
+traffic; recovery uses native PostgreSQL backups into a separate database.
+Containers and hosting remain deferred. Financial, account and authorization
+semantics and all pushed migrations remain unchanged.

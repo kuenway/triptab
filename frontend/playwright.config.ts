@@ -16,12 +16,12 @@ export default defineConfig({
     {
       command: "uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8100",
       cwd: resolve(__dirname, "../backend"),
-      env: { DATABASE_URL: databaseUrl, TRIPTAB_COOKIE_SECURE: "false", TRIPTAB_ALLOWED_ORIGINS: "http://127.0.0.1:3100" },
+      env: { DATABASE_URL: databaseUrl, TRIPTAB_ENV: "test", TRIPTAB_COOKIE_SECURE: "false", TRIPTAB_ALLOWED_ORIGINS: "http://127.0.0.1:3100", TRIPTAB_AUTH_RATE_LIMIT: "100", TRIPTAB_AUTH_GLOBAL_LIMIT: "100" },
       url: "http://127.0.0.1:8100/health",
       reuseExistingServer: false,
     },
     {
-      command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
+      command: `${process.env.E2E_PRODUCTION === "true" ? "npm run start" : "npm run dev"} -- --hostname 127.0.0.1 --port 3100`,
       env: { TRIPTAB_API_ORIGIN: "http://127.0.0.1:8100" },
       url: "http://127.0.0.1:3100",
       reuseExistingServer: false,

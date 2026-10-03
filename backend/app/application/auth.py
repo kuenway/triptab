@@ -12,12 +12,11 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.domain import User
 from app.persistence.mappers import user_from_row
 from app.persistence.models import AuthSessionRow, UserRow
 
-SESSION_SECONDS = 7 * 24 * 60 * 60
-COOKIE_NAME = "triptab_session"
 PASSWORD_HASHER = PasswordHasher()  # Library defaults use Argon2id.
 DUMMY_HASH = PASSWORD_HASHER.hash(secrets.token_urlsafe(32))
 
@@ -87,7 +86,7 @@ class AuthService:
             token_hash=token_hash(token),
             csrf_token=secrets.token_urlsafe(32),
             created_at=now,
-            expires_at=now + timedelta(seconds=SESSION_SECONDS),
+            expires_at=now + timedelta(seconds=get_settings().session_seconds),
         )
         self.session.add(row)
         self.session.flush()

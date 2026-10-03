@@ -2,7 +2,10 @@ import { expect, test, Page } from "@playwright/test";
 
 async function register(page: Page, name: string) {
   const email = `${name.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
-  await page.goto("/register");
+  const response = await page.goto("/register");
+  expect(response?.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(response?.headers()["referrer-policy"]).toBe("no-referrer");
+  expect(response?.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
   await page.getByLabel("Display name").fill(name);
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("TripTab test password 123");
