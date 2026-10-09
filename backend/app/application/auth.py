@@ -4,6 +4,7 @@ import hashlib
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from threading import BoundedSemaphore
 from uuid import UUID, uuid4
 
 from argon2 import PasswordHasher
@@ -18,6 +19,8 @@ from app.persistence.mappers import user_from_row
 from app.persistence.models import AuthSessionRow, UserRow
 
 PASSWORD_HASHER = PasswordHasher()  # Library defaults use Argon2id.
+# ponytail: two Argon2 operations per process; revisit when backend memory grows.
+PASSWORD_WORK = BoundedSemaphore(2)
 DUMMY_HASH = PASSWORD_HASHER.hash(secrets.token_urlsafe(32))
 
 
@@ -100,7 +103,8 @@ class AuthService:
         normalized = email.strip().lower()
         # The domain checks the safe user fields; credentials stay in infrastructure.
         user = User(uuid4(), normalized, display_name.strip())
-        hashed = PASSWORD_HASHER.hash(password)
+        with PASSWORD_WORK:
+            hashed = PASSWORD_HASHER.hash(password)
         try:
             with self.session.begin():
                 row = UserRow(
@@ -132,14 +136,15 @@ class AuthService:
                 if user is not None and user.password_hash
                 else DUMMY_HASH
             )
-            try:
-                PASSWORD_HASHER.verify(hashed, password)
-            except (VerificationError, InvalidHashError):
-                raise AuthenticationRequired("invalid email or password") from None
-            if user is None or user.password_hash is None:
-                raise AuthenticationRequired("invalid email or password")
-            if PASSWORD_HASHER.check_needs_rehash(user.password_hash):
-                user.password_hash = PASSWORD_HASHER.hash(password)
+            with PASSWORD_WORK:
+                try:
+                    PASSWORD_HASHER.verify(hashed, password)
+                except (VerificationError, InvalidHashError):
+                    raise AuthenticationRequired("invalid email or password") from None
+                if user is None or user.password_hash is None:
+                    raise AuthenticationRequired("invalid email or password")
+                if PASSWORD_HASHER.check_needs_rehash(user.password_hash):
+                    user.password_hash = PASSWORD_HASHER.hash(password)
             return self._new_session(user, old_token)
 
     def logout(self, session_id: UUID) -> None:

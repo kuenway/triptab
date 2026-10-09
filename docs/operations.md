@@ -36,9 +36,11 @@ public API documentation. There is no auth bypass setting.
 Root `.env.example` contains public local-only credentials. Never reuse them in
 production. Use dedicated database roles, generated credentials, least privilege,
 and validated PostgreSQL TLS (prefer `sslmode=verify-full` with the correct CA).
-Render's private URL uses self-signed TLS, so its deployment uses `PGSSLMODE=require`
-on the private same-region network; `verify-full` is unsupported there. See the
-[provider connection guidance](https://render.com/docs/postgresql-creating-connecting).
+Production uses Neon's direct public endpoint with `PGSSLMODE=verify-full`,
+`PGSSLROOTCERT=system` and `PGCHANNELBINDING=require`. URI query options take
+precedence; remove/replace any generated `sslmode=require`. Test system trust and
+the actual connection from Render, retaining certificate/hostname verification.
+See [Neon connection guidance](https://neon.com/docs/connect/connect-securely).
 Credential files should be mode 0600 and outside Git. Roles/TLS are provisioned
 separately; the application does not configure them.
 
@@ -75,7 +77,9 @@ This origin must contain no credentials/path/query and is required in production
 Rewrites are embedded in the build; rebuild when their target changes. The browser
 continues to request same-origin `/api/v1`. No secret belongs in `NEXT_PUBLIC_*`.
 Production uses neither Next.js dev nor Uvicorn reload. Size memory for Next.js
-and concurrent Argon2 work; the documented backend concurrency cap bounds that work.
+and concurrent Argon2 work. A shared semaphore bounds password hash/verify/rehash
+operations to two per process, preserving Argon2 parameters; the HTTP cap remains
+eight for the dashboard's six parallel reads. Verify memory on the actual service.
 
 Use a TLS ingress for `/` and `/api/*`, preferably routing API traffic directly to
 FastAPI. Preserve the browser's Origin. CORS stays disabled and CSRF requires both
@@ -94,6 +98,10 @@ chosen topology before release. Configure HSTS at TLS ingress after verifying HT
 replace migration checks. SQLAlchemy uses pre-ping, five pooled connections, no
 overflow, five-second pool/connect timeouts, hidden SQL parameters, and existing
 application-owned transactions. Pools close at shutdown.
+Render Free probes `/health`; use `/ready` on demand to avoid keeping Neon awake.
+Neon/Render idle suspension introduces cold starts. Database-backed sessions
+survive backend restarts; process-local rate counters reset. Do not automatically
+retry financial writes after a timeout.
 
 Request logs are JSON on stderr: timestamp, level, canonical UUID request ID,
 method, route template, status, duration and error category. Valid UUID
@@ -150,6 +158,15 @@ verification DB. Do not run tests blindly on a real restored DB; fixtures intent
 require `*_test`. See [pg_dump](https://www.postgresql.org/docs/17/app-pgdump.html)
 and [pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html).
 
+For Neon use a **direct** endpoint and certificate-verifying TLS for both tools.
+Create the empty destination through Neon database controls or native `createdb`
+with an authorized role; Neon's dump/restore workflow does not support `--create`
+or `pg_dumpall`. The local synthetic drill below deliberately retains its
+localhost-only safety guard. It must never be redirected to production. Verify
+Neon's live Free restore window/quotas at provisioning; short instant restore is
+complementary to operator-managed daily and pre-release encrypted off-provider
+exports. No paid backup storage/scheduler is implied.
+
 Before routing real traffic to a recovered database, revoke restored login sessions
 so an older backup cannot resurrect a previously logged-out session. Require users
 to log in again. This changes auth revocation metadata only, never financial history.
@@ -174,7 +191,9 @@ validates mechanics, not a configured production backup schedule or recovery SLA
 - Supply production mode, secrets, exact HTTPS origins and Secure cookies.
 - Configure TLS ingress, forwarded-header trust and client-IP rate-limit behavior.
 - Pass CI, configuration checks, production builds and browser flows.
-- Run the single migration step; verify schema and data compatibility.
+- After CI is green, run the single operator migration step from that exact
+  commit and verify head/check, then manually deploy Render. Free has no pre-deploy
+  command. Keep Git auto-deployment and Blueprint auto-sync disabled.
 - Verify HTTPS authentication, cookie/CSRF behavior and browser security headers.
 - Verify health/readiness, safe request logs and resource/concurrency settings.
 - Validate a restore and compare history; document who performs recovery.

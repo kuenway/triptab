@@ -1,42 +1,50 @@
 # Production deployment
 
 TripTab uses HTTPS browser → Vercel Next.js → same-origin `/api/v1/*` rewrite →
-Render FastAPI → paid Render PostgreSQL. Frontend root is `frontend/`; backend
+Render Free FastAPI → Neon Free PostgreSQL. Frontend root is `frontend/`; backend
 root is `backend/`. Accounting, immutable history and authorization stay in FastAPI.
 This document describes configuration and verification; a checked-in manifest
 alone does not establish that any production resource or backup exists.
 
 ## Provider configuration
 
-`render.yaml` specifies Singapore for backend and database, PostgreSQL **17**
-(matching local/CI), paid database compute `0.1c-256mb`, 1 GB storage, and paid
-backend compute `1c-2g`. Check current price/billing in the selected workspace
-before provisioning. These are initial small-deployment sizes, not availability
-or capacity guarantees. Storage is durable and the database is not the expiring
-Free plan. Monitor storage and increase it before capacity is reached.
+The approved base cost is **$0/month**: Vercel Hobby, one Render Free web service
+in Singapore (512 MB, 0.1 CPU), and one Neon Free project in AWS Singapore
+(`aws-ap-southeast-1`) with PostgreSQL **17**, database `triptab`, and a dedicated
+generated-password role owning that database. Match the local/CI major version.
+Do not create Render PostgreSQL, enable paid add-ons, upgrade plans, or add a
+payment method to bypass a free-plan limit without explicit approval. Check the
+actual organization/workspace billing tier and overage controls before provisioning;
+Render can bill bandwidth/build overages when a payment method is present.
 
-Render uses Python 3.11 from `backend/.python-version`, locked production-only
-`uv sync`, and the following **one** pre-deploy command:
+Render uses Python 3.11 from `backend/.python-version` and locked production-only
+`uv sync`. Free web services do not support `preDeployCommand`, shell/SSH or
+one-off jobs. After CI is green for the exact release commit, an operator checks
+out that commit locally and runs the following **one** migration step from
+`backend/`, with production environment supplied securely outside Git:
 
 ```sh
 uv run --locked --no-dev alembic upgrade head
 ```
 
-It runs after build and before the new release starts. Paid web services support
-this step. Do not also run migrations manually for that release or add them to
-startup. Failed releases can retry this idempotent command; there is no guarantee
-that a failed provider command is never retried. Serialize backend releases.
-Verify deploy logs and revision `20261003_0003` after the first successful release.
-There are no new or edited schema revisions in M11.
+Verify `alembic current` reports head (`20261003_0003` for the initial deployment)
+and `alembic check` succeeds before manually triggering Render deployment of that
+same commit. A failed migration stops the release. Never run migrations in a build
+or web startup. Serialize releases and record the migration result; if a command
+loses its connection, inspect the revision before deliberately retrying.
+There are no new or edited schema revisions in M11. A git push must never deploy
+new backend code before its required migration completes.
 
 The service binds Render's `$PORT` on `0.0.0.0`, with one worker, one instance,
 no reload, no raw access logs and no proxy-header trust. Its concurrency cap is
 eight, preserving M10's limit and accommodating the trip screen's six concurrent
-reads. The 2 GB instance reserves memory for the application alongside bounded
-Argon2 work; a 512 MB instance cannot safely budget eight simultaneous password hashes.
-Over-capacity requests receive Uvicorn's 503; the `/ready` health check exercises
-database connectivity. `/health` remains independent liveness. No persistent
-backend filesystem is needed.
+reads. A shared semaphore bounds password hashing, verification and rehashing to
+two operations per process, retaining Argon2id library parameters. Over-capacity
+HTTP requests receive Uvicorn's 503. Use `/health` for Render's periodic health
+check so probes do not keep Neon compute awake. Check `/ready` on demand to
+exercise database connectivity. Confirm startup, readiness, auth and a representative
+workflow on the actual 512 MB service, inspecting memory/restarts before acceptance.
+No persistent backend filesystem is needed.
 
 For Vercel, create/use one TripTab project with Next.js preset, repository root
 directory `frontend`, Node **22.x**, install `npm ci`, build `npm run build` and
@@ -54,8 +62,10 @@ Git, tickets, shell command arguments or reports.
 | Provider / variable | Purpose / production setting |
 | --- | --- |
 | Vercel `TRIPTAB_API_ORIGIN` | Exact HTTPS Render service origin; server-only; no path or trailing slash; embedded at build time |
-| Render `DATABASE_URL` | Generated private connection string from `triptab-db`; standard `postgresql://` is normalized to the installed psycopg driver without changing credentials or query options |
-| Render `PGSSLMODE` | Native libpq setting `require`, requiring TLS without plaintext fallback |
+| Render `DATABASE_URL` | Secret direct Neon connection URI for `triptab`; standard `postgresql://` is normalized to psycopg without changing credentials or query options |
+| Render `PGSSLMODE` | `verify-full`, verifying certificate chain and hostname |
+| Render `PGSSLROOTCERT` | `system`, loading libpq/OpenSSL system trust roots |
+| Render `PGCHANNELBINDING` | `require`, requiring SCRAM channel binding |
 | Render `TRIPTAB_ENV` | `production`; validates configuration before serving |
 | Render `TRIPTAB_ALLOWED_ORIGINS` | Exact public HTTPS Vercel/custom origin; no wildcard; deliberately supplied during provisioning |
 | Render `TRIPTAB_COOKIE_NAME` | `triptab_session` |
@@ -72,27 +82,48 @@ CORS middleware, browser token storage or extra auth secret is required.
 
 ## Database access and recovery
 
-Use the internal URL in the same Render workspace and region. `PGSSLMODE=require`
-is appropriate for Render's private self-signed certificate; Render does not
-support `verify-full` on internal connections. This provides encryption, not
-certificate identity verification, and relies on Render's private network.
-Generated database credentials stay in Render. The service role owns this app's
-database/schema to run migrations; do not use it for unrelated databases.
+Use the direct Neon hostname (no `-pooler`) for runtime, Alembic and logical backups.
+One service with the existing five-connection/no-overflow SQLAlchemy pool does not
+need an additional PgBouncer layer. Keep pre-ping and bounded connection timeouts;
+verify reconnect after Neon suspends. Neon Free uses a public TLS endpoint; private
+networking/IP allowlisting are unavailable on this plan. Strong credentials and
+certificate-verifying TLS are required. Do not use this role for unrelated data.
 
-`ipAllowList: []` disables external database access. Use provider shell/private
-connectivity for administration and provider-native exports. If external access
-is essential, allow only the operator's current `/32`, require TLS using the full
-external hostname, and remove the allowance afterward. Never use `0.0.0.0/0`.
+Set connection query options to `sslmode=verify-full&sslrootcert=system&channel_binding=require`
+or omit them and use the libpq environment settings above. URI query options
+override environment defaults: replace a provider-generated `sslmode=require`,
+never leave it to override verification. Preserve encoded credentials. Native
+PostgreSQL tools use `postgresql://`, not SQLAlchemy's `postgresql+psycopg://`.
+The locked psycopg binary uses libpq 18 locally, which supports system roots.
+Verify the installed client and actual Render connection, certificate/hostname
+checks and channel binding before acceptance. A successful `/ready` with the
+verified TLS options and required channel binding demonstrates that the deployed
+client can authenticate securely; inspect only sanitized connection diagnostics.
+Do not hard-code a Render CA filesystem path. If system roots are unavailable,
+investigate the installed client/trust configuration without weakening TLS.
 
-Paid Render PostgreSQL provides continuous point-in-time recovery: currently
-three days in Hobby workspaces and seven days in Pro or higher. Verify the actual
-workspace tier, paid database status and available Recovery window after creation;
-do not infer backup readiness from YAML. After smoke data, trigger a logical export
-from Recovery and confirm it completes. Render retains exports for seven days;
-download encrypted/restricted off-provider copies if longer retention is needed.
-Do not commit archives or signed export URLs. Initial recovery objectives are
-bounded by that verified window; longer retention requires an operator schedule.
-See [Render recovery](https://render.com/docs/postgresql-backups) and the
+Live [Neon pricing](https://neon.com/pricing) and
+[plan documentation](https://neon.com/docs/introduction/plans), checked **2026-10-09**,
+currently report 100 CU-hours/project/month, 1 GB PostgreSQL storage/project,
+5 GB public egress/project/month, 10 branches/project and a six-hour instant-restore
+window capped at 1 GB of change history. Free scale-to-zero is mandatory after
+five idle minutes. Do not enable paid snapshots or scheduled backups.
+These are a dated pricing snapshot;
+re-check live pricing and actual account/project limits at provisioning, and use
+the reported values if they differ. Compute/egress exhaustion suspends compute;
+storage exhaustion blocks writes. Limits do not delete existing data. No automatic
+paid upgrade is permitted.
+
+Verify the project's actual restore window after creation; pricing alone is not
+backup evidence. After smoke data, produce a native PostgreSQL 17 `pg_dump -Fc`
+logical export and validate a restore into an empty separate database. Create the
+destination explicitly; do not rely on dump/restore `--create` or `pg_dumpall` with
+Neon. Use `pg_restore --no-owner --no-acl --exit-on-error`. Revoke restored sessions
+before routing traffic to recovered data. Keep archives encrypted, restricted and
+outside Git. The six-hour recovery window does not replace off-provider exports.
+The operator owns daily and pre-release exports to existing protected storage;
+no paid storage or scheduler is provisioned implicitly. See
+[Neon PostgreSQL import](https://neon.com/docs/import/migrate-from-postgres) and the
 [restore and session revocation procedure](operations.md#backup-and-recovery).
 
 ## Deployment ordering and CI gate
@@ -104,9 +135,11 @@ See [Render recovery](https://render.com/docs/postgresql-backups) and the
    Use that immutable green commit for both provider deployments.
 3. Reserve a Vercel project and its production alias without serving a preview as
    the product. Record its exact HTTPS origin, resolving the bootstrap dependency.
-4. Provision the paid Render database and backend from the green commit. Supply
-   the reserved browser origin in `TRIPTAB_ALLOWED_ORIGINS`. The Render pre-deploy
-   step migrates before serving; do not run a second migration step.
+4. Provision Neon Free PostgreSQL 17; verify the plan, region, database, TLS and
+   live limits. Supply its direct URL only through protected runtime secrets.
+   Manually migrate from the exact green commit and verify head/check. Only then
+   create/deploy the Render Free service (creation may start an initial deploy),
+   supplying the reserved browser origin in `TRIPTAB_ALLOWED_ORIGINS`.
 5. Confirm backend `/health`, `/ready`, migration head, one-worker/instance settings
    and safe logs. Set Vercel `TRIPTAB_API_ORIGIN` to that backend HTTPS origin.
 6. Deploy Vercel production from the same green SHA. Check that the actual public
@@ -116,7 +149,7 @@ See [Render recovery](https://render.com/docs/postgresql-backups) and the
    the repository again. Record actual URLs, provider IDs, deployed SHAs and evidence
    in the completion report without secrets.
 
-Initial releases are **manual**. Render `autoDeployTrigger: "off"` and Vercel
+All initial releases are **manual**. Render `autoDeployTrigger: "off"` and Vercel
 `git.deploymentEnabled: false` prevent commit-triggered deploys. Disable automatic
 Blueprint sync in the Render dashboard too: a Blueprint sync can deploy config
 changes independently of the service's Git trigger. There are no deploy hooks or
@@ -176,8 +209,9 @@ history; do not delete ledger rows as cleanup.
   and IDs without cookies/passwords/CSRF/URLs/SQL. Use safe validation failures,
   not destructive fault injection. Check a bounded auth rejection/Retry-After
   without changing limits or locking out actual users.
-- Confirm actual paid database plan, version, region, external access restrictions,
-  Recovery timestamps/window and completed initial logical export.
+- Confirm Neon Free plan, version, region, quotas, actual recovery window and
+  completed initial logical export/restore. Verify Render stays Free, auto-deploy
+  stays off, and memory/events show no OOM or repeated restarts during the workflow.
 
 Observe Render service Events/deploy logs for failed builds/migrations, runtime
 Logs for JSON requests, readiness health checks for DB availability, and the
@@ -189,8 +223,8 @@ monitoring is provider-native; no external monitoring SaaS is added.
 
 Record the previous accepted application releases and their compatible schema.
 Redeploy/rollback to those Render/Vercel releases with the correct paired backend
-origin; inspect whether the provider rollback invokes pre-deploy commands before
-using it. Do **not** automatically downgrade Alembic. M11 has no schema changes;
+origin. Keep automatic deploys disabled during rollback. Do **not** automatically
+downgrade Alembic. M11 has no schema changes;
 initial migrations create the existing schema. For future destructive migrations,
 restore/PITR into a separate database, validate ledger/history and migration head,
 revoke recovered sessions, then deliberately switch traffic. Account for writes
@@ -199,8 +233,16 @@ since the recovery point; retain the source until recovery is accepted.
 The initial Vercel alias suffices; purchasing a custom domain is deferred. Adding
 one requires deliberately updating allowed Origin and repeating cookie/CSRF/cache
 checks. Current limitations include one-worker/instance fixed-window auth limiting,
-shared proxy-IP buckets, small compute/storage, no HA guarantee, provider backup
-retention and targeted rather than strict script CSP. Session cleanup, distributed
+shared proxy-IP buckets, small compute/storage, no HA guarantee, short recovery
+retention and targeted rather than strict script CSP. Render Free sleeps after
+15 idle minutes and can take about a minute to wake; Neon adds its own wake delay.
+Verify cold-start/proxy timeout behavior and safe error handling; never automatically
+retry a financial POST, because a timeout does not prove it was not committed.
+Render Free has 750 running hours per workspace/month, ephemeral files, and can
+suspend for unusually high outbound traffic to external databases. Observe free
+bandwidth/build quotas and disable paid overages; Vercel Hobby is for personal,
+noncommercial use and pauses features at limits. Restarts reset local rate-limit
+counts but preserve database-backed sessions. Session cleanup, distributed
 limiting, invitations, reset/verification/OAuth, multi-currency, OCR, recurring
 expenses, analytics, idempotency, ledger versioning and payment integration remain
 deferred. Development-only npm advisories acknowledged in M10 are not resolved
@@ -208,7 +250,9 @@ by this deployment; no breaking dependency changes or audit fixes are introduced
 
 Provider references: [Render Blueprint schema](https://render.com/docs/blueprint-spec),
 [release commands](https://render.com/docs/deploys),
-[Postgres connectivity](https://render.com/docs/postgresql-creating-connecting),
+[Render Free limitations](https://render.com/docs/free),
+[Neon TLS](https://neon.com/docs/connect/connect-securely),
+[libpq system trust](https://www.postgresql.org/docs/17/libpq-connect.html#LIBPQ-CONNECT-SSLROOTCERT),
 [Vercel external rewrite cache changes](https://vercel.com/changelog/vercels-cdn-now-respects-cache-control-headers-from-external-origins-by-default),
 [cache header priority](https://vercel.com/docs/caching/cache-control-headers), and
 [manual Git deployment configuration](https://vercel.com/docs/project-configuration/git-configuration).

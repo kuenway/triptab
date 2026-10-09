@@ -1,4 +1,4 @@
-# Initial production deployments are manual and require green GitHub CI.
+# Release ordering: green CI -> operator Alembic migration -> manual deployment.
 services:
   - type: web
     name: triptab-api
@@ -6,19 +6,20 @@ services:
     rootDir: backend
     branch: main
     region: singapore
-    plan: 1c-2g
+    plan: free
     numInstances: 1
     autoDeployTrigger: "off"
     buildCommand: uv sync --locked --no-dev
-    preDeployCommand: uv run --locked --no-dev alembic upgrade head
     startCommand: uv run --locked --no-dev uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --limit-concurrency 8 --no-access-log --no-proxy-headers
-    healthCheckPath: /ready
+    healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: triptab-db
-          property: connectionString
+        sync: false
       - key: PGSSLMODE
+        value: verify-full
+      - key: PGSSLROOTCERT
+        value: system
+      - key: PGCHANNELBINDING
         value: require
       - key: TRIPTAB_ENV
         value: production
@@ -40,13 +41,3 @@ services:
         value: "100"
       - key: TRIPTAB_AUTH_RATE_WINDOW
         value: "60"
-
-databases:
-  - name: triptab-db
-    databaseName: triptab
-    user: triptab
-    region: singapore
-    plan: 0.1c-256mb
-    postgresMajorVersion: "17"
-    diskSizeGB: 1
-    ipAllowList: []

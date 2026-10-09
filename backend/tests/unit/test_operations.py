@@ -82,8 +82,11 @@ def test_invalid_environment_errors_never_include_credentials(monkeypatch):
     assert "postgresql://" not in str(error.value)
 
 
-def test_render_url_keeps_credentials_encoding_and_tls_options():
-    url = "postgresql://triptab:synthetic%40credential@db/triptab?sslmode=require"
+def test_provider_url_keeps_credentials_encoding_and_verifying_tls_options():
+    url = (
+        "postgresql://triptab:synthetic%40credential@db/triptab"
+        "?sslmode=verify-full&sslrootcert=system&channel_binding=require"
+    )
     settings = Settings.model_validate(PRODUCTION | {"database_url": url})
     assert settings.database_url.get_secret_value() == url.replace(
         "postgresql://", "postgresql+psycopg://", 1
