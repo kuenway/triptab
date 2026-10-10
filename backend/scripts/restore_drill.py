@@ -23,7 +23,7 @@ from app.persistence.models import Base
 def main() -> None:
     root = Path(__file__).resolve().parents[2]
     url = make_url(database_url())
-    if url.host not in {"localhost", "127.0.0.1"} or url.username != "splitwise":
+    if url.host not in {"localhost", "127.0.0.1"} or url.username != "triptab":
         raise RuntimeError("This drill requires the documented local Compose database")
     suffix = uuid4().hex[:10]
     databases = [f"triptab_source_{suffix}_test", f"triptab_restore_{suffix}_test"]
@@ -62,7 +62,7 @@ def main() -> None:
                 )
             )
         source, restored = engines
-        command.upgrade(migration(source), "head")  # Clean 0001 -> 0002 -> 0003.
+        command.upgrade(migration(source), "head")  # Clean database to current head.
         command.check(migration(source))
         with Session(source) as session:
             context, _ = AuthService(session).register(
@@ -127,7 +127,7 @@ def main() -> None:
             "db",
         ]
         dump = subprocess.run(
-            [*compose, "pg_dump", "-U", "splitwise", "-Fc", databases[0]],
+            [*compose, "pg_dump", "-U", "triptab", "-Fc", databases[0]],
             cwd=root,
             check=True,
             capture_output=True,
@@ -137,7 +137,7 @@ def main() -> None:
                 *compose,
                 "pg_restore",
                 "-U",
-                "splitwise",
+                "triptab",
                 "--no-owner",
                 "--no-acl",
                 "--exit-on-error",
@@ -173,6 +173,7 @@ def main() -> None:
             "expense_voids": 1,
             "settlement_voids": 2,
             "auth_sessions": 1,
+            "trip_invitations": 0,
         }
         print(
             "PASS: clean/populated migrations; native dump/restore; all rows, roles, "

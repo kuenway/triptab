@@ -183,3 +183,10 @@ frontend at `http://127.0.0.1:3100`, and tests logout/login, private trip isolat
 and correction history. Browser tracing is disabled to keep authentication
 credentials and session cookies out of trace artifacts. CI continues using real
 PostgreSQL with the existing jobs; no new service infrastructure is added.
+
+M13 adds Owner-only unused Guest removal with the existing session, Origin and
+CSRF checks. Linked Members (including accepted invitees) cannot be removed in
+this milestone. Owner overrides do not permit deleting financial identities.
+Frontend Expense defaults use the authenticated User's linked GroupMember as
+payer, with explicit editing allowed; a missing association never falls back to
+an arbitrary traveler. Recording actor still comes exclusively from the session.

@@ -110,9 +110,35 @@ acceptance/revocation. Membership uniqueness and all financial constraints remai
 Downgrade is disposable-only: it drops invitation audit, not member account links
 or financial history. It is not an identity undo.
 
-M12 is verified only on local Docker Compose PostgreSQL. It does not deploy, push,
-run production migrations, change provider configuration, or create production
-invitations. Release requires review, push, green CI, explicit production migration
-approval, then the existing manual backend/frontend deployment procedure. Keep
+M12 is released from `2937306` with production migration `20261011_0004`.
+M13 remains locally verified only: no push, deployment, production migration or
+provider changes. Its release requires review, push, green CI, explicit production
+migration approval, then the existing manual backend/frontend deployment procedure. Keep
 Render automatic deployment disabled. No invitation cleanup worker, email delivery,
-unrestricted join link, identity merge or membership removal is included.
+unrestricted join link or identity merge is included. M13 adds unused Guest
+removal below; account-linked Member removal remains deferred.
+
+## Traveler controls and unused Guest removal (Milestone 13)
+
+Each traveler appears once, with Owner/Member/Guest badge and Owner-only actions
+in their own row. An unclaimed Guest shows invitation metadata, Invite to TripTab,
+pending Revoke, and Remove traveler. Newly generated copyable links stay in memory;
+closed links require reissue. Linked Members show their Member badge, without a
+redundant accepted-invitation banner. Members cannot manage invitations or removals.
+
+`DELETE /api/v1/groups/{group_id}/members/{member_id}` requires the Owner's session,
+CSRF token and allowed Origin. Confirmation in the UI precedes the request. Success
+is empty 204 with no-store; missing/cross-trip targets return 404, non-Owners 403,
+and Owner/account-linked/financial-history targets 409. Only unused, unclaimed
+Guests qualify. A zero current balance is insufficient; any historical payer,
+split (even zero), or settlement reference blocks removal permanently. Voiding a
+record does not make its traveler removable.
+
+Pending and expired unconsumed invitations are revoked atomically during removal;
+already-revoked rows are detached too. Audit retains immutable original target
+UUID and timestamps/actors, never a raw token. The nullable live target retains
+its group-scoped FK when present. Pending/accepted rows must retain a live target;
+only revoked rows may detach. An old token becomes unavailable for preview or
+acceptance. Member-first locks serialize removal with invitation transitions:
+removal first makes the claim unavailable; acceptance first prevents removal of
+the now-linked Member. Account-linked Member removal remains deferred.

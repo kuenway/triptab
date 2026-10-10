@@ -38,11 +38,11 @@ uv sync --python 3.11
 uv run --env-file ../.env alembic upgrade head
 ```
 
-The Compose service creates the `splitwise` database. Create the separate test
+The Compose service creates the `triptab` database. Create the separate test
 database once from the repository root:
 
 ```sh
-docker compose exec -T db psql -U splitwise -d postgres -c 'CREATE DATABASE splitwise_test'
+docker compose exec -T db psql -U triptab -d postgres -c 'CREATE DATABASE triptab_test'
 ```
 
 From `backend/`, run:
@@ -160,5 +160,58 @@ financial table or historical member ID changes.
 Local tests cover populated upgrade preserving old rows/credentials/sessions,
 Alembic drift check, disposable downgrade/upgrade, rollback and separate-connection
 PostgreSQL races. Downgrade removes invitation audit without unlinking members or
-rewriting financial data. Never run it on retained history. Production remains at
-M11 until the separately approved release. See [invitations](invitations.md).
+rewriting financial data. Never run it on retained history. The released M12
+production baseline uses `20261011_0004`; the M13 revision below remains local
+until a separately approved release. See [invitations](invitations.md).
+
+## Guest removal audit migration (Milestone 13)
+
+Revision `20261011_0005` follows `20261011_0004`; deployed migration files are
+unchanged. It backfills a non-null `target_member_snapshot_id` from the original
+target UUID and makes `target_member_id` a nullable live reference. The existing
+composite trip/member foreign key and lookup index remain. New checks require
+any live target to match its snapshot and allow a detached target only on a
+revoked invitation. A small PostgreSQL trigger makes the UUID snapshot immutable.
+The same trigger initializes omitted snapshots on insert so the M12 backend can
+still create invitations between the production migration and manual deployment.
+No display-name snapshot is needed: retained owner metadata uses UUIDs, while the
+traveler UI renders current members and omits removed targets.
+
+Removal locks the Guest, checks Owner authorization, rejects account-linked or
+Owner members and every financial reference (including zero allocations and
+voided/corrected history), revokes unconsumed invitations, detaches revoked live
+references, and deletes the unused Guest in one transaction. Invitation audit
+rows remain. Financial foreign keys stay RESTRICT; a competing insert that wins
+is translated to 409 after rolling back the entire removal transaction.
+
+Local PostgreSQL 18 tests cover populated upgrade, immutable snapshots, scoped
+FKs, lifecycle, atomic failure, removal/acceptance races, and Alembic check.
+Disposable downgrade/upgrade to `20261011_0004` is permitted only if no detached
+invitation exists. Downgrade deliberately refuses otherwise; it never discards
+audit or recreates deleted identities. This migration has not run in production.
+After Guest removals create detached audit, retain snapshot-aware application code;
+M12 listing responses require a non-null target and cannot read detached rows.
+
+## TripTab local naming and preserved legacy data
+
+Compose now explicitly uses project name `triptab`, database/user `triptab`, and
+volume `triptab_postgres_data`. Existing `.env` files are not overwritten: update
+their local POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DATABASE_URL and
+TEST_DATABASE_URL together using `.env.example`. Tests use `triptab_test`, browser
+tests use `triptab_e2e_test`; all three are separate databases. Local Compose
+remains PostgreSQL 17; CI tests both 17 and 18, and release readiness uses 18.
+
+Existing local development data remains in `splitwise_postgres_data`. It is
+intentionally preserved, not renamed or automatically copied into the new volume.
+The new volume starts empty and requires migrations. If the previous container
+owns port 5433, stop it without deleting it or its volume before starting TripTab:
+
+```sh
+docker stop splitwise-db-1
+docker compose up -d db
+```
+
+Do not use `docker compose down -v` or delete the legacy volume. For needed data,
+review a native PostgreSQL dump/restore separately; copying a live volume is not
+a backup. Recovery tooling now selects the TripTab Compose service/user. Both old
+and new known example passwords remain rejected in production configuration.

@@ -55,9 +55,25 @@ See [authentication, CSRF, permissions, and legacy-data handling](docs/authentic
 For an existing `.env`, add the local cookie and Origin settings from `.env.example`.
 Legacy unowned trips are not exposed to newly registered users.
 
+Each traveler row includes its badge and Owner-only invitation/removal actions.
+Owners can remove only unused, unclaimed Guests after confirmation. Any financial
+history blocks removal, including voided records and zero allocations. Invitation
+audit remains stored; linked Member removal is deferred. See [invitation and
+removal contracts](docs/invitations.md).
+
+Local development now uses TripTab database/volume names. Existing local data stays
+in `splitwise_postgres_data`; the new `triptab_postgres_data` volume starts empty.
+See [local naming transition](docs/persistence.md#triptab-local-naming-and-preserved-legacy-data)
+before starting Compose if an older container already owns port 5433.
+
 In the browser, create a trip, add travelers, record an Equal or Exact expense,
-then read its stored allocations and the group's balances. The payer can be
-outside the split. Monetary amounts are whole NTD; currency is always TWD.
+then read its stored allocations and the group's balances. Fresh Equal expenses
+select all current travelers and default Paid by to your
+linked traveler. You can change the payer or uncheck participants; edits persist
+through ordinary form changes. Switching Exact to Equal initializes all travelers,
+and saving starts a fresh default form. Corrections retain the original payer and
+splits. The payer can be outside the split. Monetary amounts are whole NTD;
+currency is always TWD.
 The trip's **Suggested payments** section proposes transfers to settle those
 balances. Choose **Mark as paid** only after a transfer happened outside TripTab,
 check the sender, recipient, amount, and payment time, then choose **Record payment**.
@@ -103,13 +119,13 @@ database. The test writes real records, so use this dedicated database only for
 browser testing. With Compose running, from the repository root:
 
 ```sh
-docker compose exec -T db createdb -U splitwise splitwise_e2e_test
+docker compose exec -T db createdb -U triptab triptab_e2e_test
 cd backend
-DATABASE_URL=postgresql+psycopg://splitwise:splitwise_local_only@127.0.0.1:5433/splitwise_e2e_test uv run --locked alembic upgrade head
+DATABASE_URL=postgresql+psycopg://triptab:triptab_local_only@127.0.0.1:5433/triptab_e2e_test uv run --locked alembic upgrade head
 cd ../frontend
 npm ci
 npx playwright install chromium
-E2E_DATABASE_URL=postgresql+psycopg://splitwise:splitwise_local_only@127.0.0.1:5433/splitwise_e2e_test npm run test:e2e
+E2E_DATABASE_URL=postgresql+psycopg://triptab:triptab_local_only@127.0.0.1:5433/triptab_e2e_test npm run test:e2e
 ```
 
 Create the browser-test database only once. Playwright starts isolated backend and

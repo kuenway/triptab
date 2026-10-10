@@ -98,9 +98,9 @@ function fillExpense() {
 it("submits Equal participants without forcing the payer into the split", async () => {
   vi.mocked(api.addExpense).mockResolvedValue(expense);
   render(<ExpenseForm tripId={trip.id} travelers={travelers} onCreated={vi.fn()} />);
+  await waitFor(() => expect(screen.getByLabelText("Paid by")).toHaveProperty("value", "alice"));
   fillExpense();
-  fireEvent.click(screen.getByLabelText("Bob", { selector: "input[type=checkbox]" }));
-  fireEvent.click(screen.getByLabelText("Charlie", { selector: "input[type=checkbox]" }));
+  fireEvent.click(screen.getByLabelText("Alice", { selector: "input[type=checkbox]" }));
   fireEvent.click(screen.getByRole("button", { name: "Add expense" }));
   await waitFor(() => expect(api.addExpense).toHaveBeenCalledWith(trip.id, expect.objectContaining({
     payer_member_id: "alice", split_strategy: "equal", participant_member_ids: ["bob", "charlie"], amount: 900,
@@ -111,10 +111,10 @@ it("submits Equal participants without forcing the payer into the split", async 
 it("shows Exact allocation totals and blocks a mismatch", async () => {
   vi.mocked(api.addExpense).mockResolvedValue(expense);
   render(<ExpenseForm tripId={trip.id} travelers={travelers} onCreated={vi.fn()} />);
+  await waitFor(() => expect(screen.getByLabelText("Paid by")).toHaveProperty("value", "alice"));
   fillExpense();
   fireEvent.click(screen.getByLabelText("Exact amounts"));
-  fireEvent.click(screen.getByLabelText("Alice", { selector: "input[type=checkbox]" }));
-  fireEvent.click(screen.getByLabelText("Bob", { selector: "input[type=checkbox]" }));
+  fireEvent.click(screen.getByLabelText("Charlie", { selector: "input[type=checkbox]" }));
   fireEvent.change(screen.getByLabelText("Alice allocation"), { target: { value: "500" } });
   fireEvent.change(screen.getByLabelText("Bob allocation"), { target: { value: "300" } });
   expect(screen.getByText("Allocated NT$800 of NT$900")).toBeTruthy();
@@ -574,4 +574,68 @@ it("shows an accessible-operation permission error from the API", async () => {
   fillPayment();
   fireEvent.click(screen.getByRole("button", { name: "Record payment" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "only sender, recipient, or group owner may record a payment");
+});
+
+it.each(["owner", "member"])("defaults all Equal participants and the current %s's membership, with editable payer", async (role) => {
+  const members = travelers.map((member) => member.id === "bob" ? { ...member, user_id: "bob-user" } : member);
+  vi.mocked(api.getMe).mockResolvedValue({ ...authState, user: { ...currentUser, id: role === "owner" ? currentUser.id : "bob-user" } });
+  render(<ExpenseForm tripId={trip.id} travelers={[members[2], members[1], members[0]]} onCreated={vi.fn()} />);
+  await waitFor(() => expect(screen.getByLabelText("Paid by")).toHaveProperty("value", role === "owner" ? "alice" : "bob"));
+  expect(screen.getAllByRole("checkbox").every((box) => (box as HTMLInputElement).checked)).toBe(true);
+  fireEvent.change(screen.getByLabelText("Paid by"), { target: { value: "charlie" } });
+  expect(screen.getByLabelText("Paid by")).toHaveProperty("value", "charlie");
+});
+
+it("preserves edits through amount, description, payer, rerenders and added travelers", async () => {
+  const view = render(<ExpenseForm tripId={trip.id} travelers={travelers} onCreated={vi.fn()} />);
+  await waitFor(() => expect(screen.getByLabelText("Paid by")).toHaveProperty("value", "alice"));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Bob" }));
+  fillExpense();
+  fireEvent.change(screen.getByLabelText("Paid by"), { target: { value: "charlie" } });
+  view.rerender(<AuthProvider><ExpenseForm tripId={trip.id} travelers={[...travelers, { ...travelers[1], id: "dan", display_name: "Dan" }]} onCreated={vi.fn()} /></AuthProvider>);
+  expect(screen.getByRole("checkbox", { name: "Bob" })).toHaveProperty("checked", false);
+  expect(screen.getByRole("checkbox", { name: "Dan" })).toHaveProperty("checked", false);
+  expect(screen.getByRole("checkbox", { name: "Alice" })).toHaveProperty("checked", true);
+  expect(screen.getByLabelText("Paid by")).toHaveProperty("value", "charlie");
+});
+
+it("initializes all participants when switching Exact to Equal and keeps subsequent edits", () => {
+  render(<ExpenseForm tripId={trip.id} travelers={travelers} onCreated={vi.fn()} />);
+  fireEvent.click(screen.getByLabelText("Exact amounts"));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Bob" }));
+  fireEvent.click(screen.getByLabelText("Equal", { exact: true }));
+  expect(screen.getAllByRole("checkbox").every((box) => (box as HTMLInputElement).checked)).toBe(true);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Bob" }));
+  fireEvent.change(screen.getByLabelText("Amount (NT$)"), { target: { value: "900" } });
+  expect(screen.getByRole("checkbox", { name: "Bob" })).toHaveProperty("checked", false);
+});
+
+it("starts a fresh default form after saving without changing submitted splits", async () => {
+  vi.mocked(api.addExpense).mockResolvedValue(expense);
+  render(<ExpenseForm tripId={trip.id} travelers={travelers} onCreated={vi.fn()} />);
+  await waitFor(() => expect(screen.getByLabelText("Paid by")).toHaveProperty("value", "alice"));
+  fillExpense();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Alice" }));
+  fireEvent.change(screen.getByLabelText("Paid by"), { target: { value: "charlie" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add expense" }));
+  await screen.findByText("Expense saved.");
+  expect(api.addExpense).toHaveBeenCalledWith(trip.id, expect.objectContaining({ payer_member_id: "charlie", participant_member_ids: ["bob", "charlie"] }));
+  expect(screen.getAllByRole("checkbox").every((box) => (box as HTMLInputElement).checked)).toBe(true);
+  expect(screen.getByLabelText("Paid by")).toHaveProperty("value", "alice");
+});
+
+it("does not guess a payer when the current account has no linked member", async () => {
+  render(<ExpenseForm tripId={trip.id} travelers={travelers.map((member) => ({ ...member, user_id: null }))} onCreated={vi.fn()} />);
+  await screen.findByText(/Your traveler membership could not be resolved/);
+  expect(screen.getByLabelText("Paid by")).toHaveProperty("value", "");
+  fillExpense(); fireEvent.click(screen.getByRole("button", { name: "Add expense" }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Choose who paid.");
+  expect(api.addExpense).not.toHaveBeenCalled();
+});
+
+it("keeps original payer and subset when opening a correction", () => {
+  render(<ExpenseForm tripId={trip.id} travelers={travelers} initialExpense={{ ...expense, payer_member_id: "charlie", splits: [{ member_id: "bob", amount: 900 }] }} onCreated={vi.fn()} />);
+  expect(screen.getByLabelText("Paid by")).toHaveProperty("value", "charlie");
+  expect(screen.getByRole("checkbox", { name: "Bob" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("checkbox", { name: "Alice" })).toHaveProperty("checked", false);
 });

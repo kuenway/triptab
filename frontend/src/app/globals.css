@@ -58,7 +58,12 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .trip-intro { padding-bottom: 34px; }
 .section-caption { font-size: .86rem; margin-top: -12px; }
 .traveler-list { display: grid; margin-bottom: 22px; }
-.traveler-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.traveler-row { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center; gap: 8px 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+.traveler-identity { min-width: 0; overflow-wrap: anywhere; }
+.traveler-identity small { display: block; margin-top: 4px; }
+.traveler-actions, .traveler-detail { grid-column: 2 / -1; min-width: 0; }
+.traveler-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.traveler-actions button { padding: 7px 10px; font-size: .8rem; }
 .person-dot { width: 30px; height: 30px; border-radius: 50%; font-size: .85rem; }
 .inline-form { display: grid; grid-template-columns: 1fr auto; gap: 9px; }
 .form-wide { grid-column: 1 / -1; }

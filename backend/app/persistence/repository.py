@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.accounting import validate_expense, validate_settlement
@@ -99,6 +99,38 @@ class LedgerRepository:
             .order_by(GroupMemberRow.id)
         )
         return tuple(member_from_row(row) for row in rows)
+
+    def has_member_financial_history(self, group_id: UUID, member_id: UUID) -> bool:
+        # Include originals of voided/corrected records, even with a zero balance.
+        return bool(
+            self.session.scalar(
+                select(
+                    or_(
+                        select(ExpenseRow.id)
+                        .where(
+                            ExpenseRow.group_id == group_id,
+                            ExpenseRow.payer_member_id == member_id,
+                        )
+                        .exists(),
+                        select(ExpenseSplitRow.expense_id)
+                        .where(
+                            ExpenseSplitRow.group_id == group_id,
+                            ExpenseSplitRow.member_id == member_id,
+                        )
+                        .exists(),
+                        select(SettlementRow.id)
+                        .where(
+                            SettlementRow.group_id == group_id,
+                            or_(
+                                SettlementRow.from_member_id == member_id,
+                                SettlementRow.to_member_id == member_id,
+                            ),
+                        )
+                        .exists(),
+                    )
+                )
+            )
+        )
 
     def _group_context(self, group_id: UUID) -> tuple[Group, tuple[GroupMember, ...]]:
         group = self.get_group(group_id)

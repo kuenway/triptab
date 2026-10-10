@@ -25,7 +25,8 @@ class InvitationToken(RequestModel):
 class InvitationResponse(RequestModel):
     id: UUID
     group_id: UUID
-    target_member_id: UUID
+    target_member_id: UUID | None
+    target_member_snapshot_id: UUID
     created_by_user_id: UUID
     created_at: AwareDatetime
     expires_at: AwareDatetime

@@ -34,7 +34,7 @@ def preview_invitation(session: Session, token: str) -> dict:
     if row is None or row.status != "pending":
         raise ResourceNotFound("invitation unavailable")
     member = session.get(GroupMemberRow, row.target_member_id)
-    if member.user_id is not None:
+    if member is None or member.user_id is not None:
         raise ResourceNotFound("invitation unavailable")
     group = session.get(GroupRow, row.group_id)
     return {
@@ -65,6 +65,8 @@ class InvitationService:
         self, row: TripInvitationRow
     ) -> tuple[TripInvitationRow, GroupMemberRow]:
         # All transitions lock target member BEFORE invitation to avoid deadlocks.
+        if row.target_member_id is None:
+            raise ResourceNotFound("invitation unavailable")
         member = self._member(row.group_id, row.target_member_id)
         invitation = self.session.scalar(
             select(TripInvitationRow)
@@ -96,6 +98,7 @@ class InvitationService:
                 id=uuid4(),
                 group_id=group_id,
                 target_member_id=member_id,
+                target_member_snapshot_id=member_id,
                 token_hash=token_digest(token),
                 created_by_user_id=self.current_user.id,
                 created_at=now,
@@ -128,6 +131,8 @@ class InvitationService:
             )
             if row is None:
                 raise ResourceNotFound("invitation not found")
+            if row.status != "pending":
+                raise InvitationConflict("invitation is no longer pending")
             row, _member = self._lock_invitation(row)
             if row.status != "pending":
                 raise InvitationConflict("invitation is no longer pending")

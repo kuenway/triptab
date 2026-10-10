@@ -98,3 +98,10 @@ it.each(["create","accept","list","revoke"])("centralizes invitation %s requests
   const [url,options]=fetch.mock.calls[0];expect(url).not.toContain("synthetic-invitation-token");expect(options.cache).toBe("no-store");
   if(operation!=="list")expect(options.headers["X-CSRF-Token"]).toBe("csrf-test");
 });
+
+it("deletes a Guest with CSRF, same-origin credentials, no-store and an empty 204 response", async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+  vi.stubGlobal("fetch", fetch);
+  await expect(api.removeTraveler("trip", "guest")).resolves.toBeUndefined();
+  expect(fetch).toHaveBeenCalledWith("/api/v1/groups/trip/members/guest", expect.objectContaining({ method: "DELETE", credentials: "same-origin", headers: { "X-CSRF-Token": "csrf-test" }, cache: "no-store", body: undefined }));
+});

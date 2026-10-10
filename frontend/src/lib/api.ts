@@ -30,7 +30,8 @@ export type Traveler = {
 export type TripInvitation = {
   id: string;
   group_id: string;
-  target_member_id: string;
+  target_member_id: string | null;
+  target_member_snapshot_id: string;
   created_by_user_id: string;
   created_at: string;
   expires_at: string;
@@ -115,15 +116,15 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, body?: object): Promise<T> {
+async function request<T>(path: string, body?: object, method = body ? "POST" : "GET"): Promise<T> {
   const publicRequest = path === "/auth/login" || path === "/auth/register" || path === "/invitations/preview";
-  if (body && !publicRequest && !csrfToken) await api.getMe();
+  if (method !== "GET" && !publicRequest && !csrfToken) await api.getMe();
   let response: Response;
   try {
     response = await fetch(`/api/v1${path}`, {
-      method: body ? "POST" : "GET",
+      method,
       credentials: "same-origin",
-      headers: body ? { "Content-Type": "application/json", ...(!publicRequest && csrfToken ? { "X-CSRF-Token": csrfToken } : {}) } : undefined,
+      headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(method !== "GET" && !publicRequest && csrfToken ? { "X-CSRF-Token": csrfToken } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",
     });
@@ -166,6 +167,7 @@ export const api = {
   listTravelers: (id: string) => request<Traveler[]>(`/groups/${id}/members`),
   addTraveler: (id: string, display_name: string) =>
     request<Traveler>(`/groups/${id}/members`, { display_name }),
+  removeTraveler: (id: string, memberId: string) => request<void>(`/groups/${id}/members/${memberId}`, undefined, "DELETE"),
   createInvitation: (id: string, memberId: string) =>
     request<TripInvitation & { token: string }>(`/groups/${id}/members/${memberId}/invitations`, {}),
   listInvitations: (id: string) => request<TripInvitation[]>(`/groups/${id}/invitations`),

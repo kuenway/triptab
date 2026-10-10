@@ -38,3 +38,12 @@ links use URL fragments, with explicit authenticated acceptance. Target member r
 locks and existing membership uniqueness protect races. Accounting and financial
 identity/history do not change. Production release remains separately approved;
 see [invitation contracts](invitations.md).
+
+Milestone 13 keeps traveler management focused on unused Guests. Owners may remove
+only an unclaimed Guest with no financial references, including voided/corrected
+history. Invitation audit is retained using a nullable live scoped reference and
+an immutable original-UUID snapshot (revision `20261011_0005`). No financial FK
+is weakened and no member identity/history is merged or moved. Linked Member
+removal and ownership transfer remain deferred. Active repository identifiers use
+TripTab/triptab; legacy password rejection fixtures and the preserved old local
+Docker volume are deliberate exceptions.

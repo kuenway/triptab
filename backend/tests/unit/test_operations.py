@@ -26,6 +26,8 @@ PRODUCTION = {
             "database_url": "postgresql+psycopg://triptab:splitwise_local_only@db/triptab"
         },
         {"database_url": "postgresql+psycopg://triptab:splitwise_ci_only@db/triptab"},
+        {"database_url": "postgresql+psycopg://triptab:triptab_local_only@db/triptab"},
+        {"database_url": "postgresql+psycopg://triptab:triptab_ci_only@db/triptab"},
         {"database_url": "postgresql+psycopg://triptab:password@db/triptab"},
         {"database_url": "postgresql+psycopg://triptab@db/triptab"},
         {"cookie_secure": False},

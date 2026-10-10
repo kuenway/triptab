@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from app.api.dependencies import get_service
 from app.api.schemas import (
@@ -70,6 +70,16 @@ def list_members(group_id: UUID, service: ServiceDependency) -> list[MemberRespo
     return [
         MemberResponse.from_domain(member) for member in service.list_members(group_id)
     ]
+
+
+@router.delete(
+    "/groups/{group_id}/members/{member_id}", status_code=204, tags=["members"]
+)
+def remove_member(
+    group_id: UUID, member_id: UUID, service: ServiceDependency
+) -> Response:
+    service.remove_guest_member(group_id, member_id)
+    return Response(status_code=204)
 
 
 @router.post(

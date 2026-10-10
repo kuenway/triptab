@@ -43,3 +43,9 @@ not accounting. Claiming changes only an existing GroupMember's nullable user
 association; its UUID, role and financial references remain stable. Owner permission,
 trip-scoped target, pending lifecycle and one-member-per-account checks are
 contextual and transactional. See [invitations](invitations.md).
+
+Guest removal is a transactional application/persistence rule: Owner only,
+unclaimed non-Owner target, and no persisted financial references of any state.
+Current zero balance does not prove eligibility. Revoking/detaching invitations
+and deleting the unused target are atomic; snapshot and live-reference constraints
+preserve retained audit. Accounting allocations and derived balances are unchanged.

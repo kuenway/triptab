@@ -88,12 +88,17 @@ export function ExpenseHistory({ expenses, travelers, tripId, onChanged }: { exp
 }
 
 export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCancel }: { tripId: string; travelers: Traveler[]; onCreated: () => void | Promise<void>; initialExpense?: Expense; onCancel?: () => void }) {
+  const { user } = useAuth();
+  const ownMemberId = travelers.find((member) => member.user_id === user?.id)?.id ?? "";
   const [description, setDescription] = useState(initialExpense?.description ?? "");
   const [amount, setAmount] = useState(initialExpense ? String(initialExpense.amount) : "");
-  const [payerId, setPayerId] = useState(initialExpense?.payer_member_id ?? "");
+  const [selectedPayer, setPayerId] = useState<string | null>(initialExpense?.payer_member_id ?? null);
+  const payerId = selectedPayer ?? ownMemberId;
   const [occurredAt, setOccurredAt] = useState(initialExpense ? localDateTime(initialExpense.occurred_at) : "");
   const [strategy, setStrategy] = useState<"equal" | "exact">(initialExpense?.split_strategy ?? "equal");
-  const [participants, setParticipants] = useState<string[]>(initialExpense?.splits.map((split) => split.member_id) ?? []);
+  const [selectedParticipants, setParticipants] = useState<string[] | null>(initialExpense?.splits.map((split) => split.member_id) ?? null);
+  // Defaults follow current travelers only until the user starts editing.
+  const participants = (selectedParticipants ?? travelers.map((member) => member.id)).filter((id) => travelers.some((member) => member.id === id));
   const [allocations, setAllocations] = useState<Record<string, string>>(Object.fromEntries(initialExpense?.splits.map((split) => [split.member_id, String(split.amount)]) ?? []));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -108,7 +113,7 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
   const exactMismatch = strategy === "exact" && participants.length > 0 && amount !== "" && allocated !== numericAmount;
 
   function toggleParticipant(id: string) {
-    setParticipants((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+    setParticipants((current) => (current ?? participants).includes(id) ? (current ?? participants).filter((value) => value !== id) : [...(current ?? participants), id]);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -125,7 +130,7 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
     const common = {
       description: description.trim(),
       amount: numericAmount,
-      payer_member_id: payerId || travelers[0]?.id,
+      payer_member_id: travelers.some((member) => member.id === payerId) ? payerId : "",
       occurred_at: initialExpense && occurredAt === localDateTime(initialExpense.occurred_at)
         ? initialExpense.occurred_at : new Date(occurredAt).toISOString(),
     };
@@ -149,7 +154,9 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
       setSaved(expense);
       setDescription("");
       setAmount("");
-      setParticipants([]);
+      setParticipants(null);
+      setPayerId(null);
+      setStrategy("equal");
       setAllocations({});
       setOccurredAt("");
       await onCreated();
@@ -166,7 +173,7 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
   if (travelers.length === 0) return <p className="muted">Add a traveler before recording expenses.</p>;
 
   return (
-    <form onSubmit={submit} className="stack-form expense-form">
+    <form onSubmit={submit} onChange={() => setParticipants((current) => current ?? participants)} className="stack-form expense-form">
       {initialExpense ? <><p>The original expense will remain in history and will be marked void. This saves a new replacement record.</p><label htmlFor={`${prefix}-reason`}>Reason</label><input id={`${prefix}-reason`} value={reason} onChange={(event) => setReason(event.target.value)} required disabled={saving} /></> : null}
       <fieldset disabled={saving} className="stack-form form-fields">
       <div className="two-fields">
@@ -174,13 +181,13 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
         <div><label htmlFor={`${prefix}-expense-amount`}>Amount (NT$)</label><input id={`${prefix}-expense-amount`} type="number" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} required /></div>
       </div>
       <div className="two-fields">
-        <div><label htmlFor={`${prefix}-expense-payer`}>Paid by</label><select id={`${prefix}-expense-payer`} value={payerId || travelers[0].id} onChange={(event) => setPayerId(event.target.value)}>{travelers.map((traveler) => <option key={traveler.id} value={traveler.id}>{traveler.display_name}</option>)}</select></div>
+        <div><label htmlFor={`${prefix}-expense-payer`}>Paid by</label><select id={`${prefix}-expense-payer`} value={payerId} onChange={(event) => setPayerId(event.target.value)}><option value="">Choose who paid</option>{travelers.map((traveler) => <option key={traveler.id} value={traveler.id}>{traveler.display_name}</option>)}</select></div>
         <div><label htmlFor={`${prefix}-expense-date`}>When did it happen?</label><input id={`${prefix}-expense-date`} type="datetime-local" step="any" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} required /></div>
       </div>
       <fieldset className="choice-fieldset">
         <legend>Split method</legend>
         <div className="segmented">
-          <label><input type="radio" name={`${prefix}-split-strategy`} value="equal" checked={strategy === "equal"} onChange={() => setStrategy("equal")} /> Equal</label>
+          <label><input type="radio" name={`${prefix}-split-strategy`} value="equal" checked={strategy === "equal"} onChange={() => { setStrategy("equal"); setParticipants(travelers.map((member) => member.id)); }} /> Equal</label>
           <label><input type="radio" name={`${prefix}-split-strategy`} value="exact" checked={strategy === "exact"} onChange={() => setStrategy("exact")} /> Exact amounts</label>
         </div>
       </fieldset>
@@ -203,6 +210,7 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
           {exactMismatch ? <p className="field-hint" role="status">Allocations must match the expense amount.</p> : null}
         </div>
       ) : null}
+      {!initialExpense && !ownMemberId ? <p className="field-hint">Your traveler membership could not be resolved. Choose who paid explicitly or refresh the trip.</p> : null}
       {error ? <p className="alert" role="alert">{error}</p> : null}
       </fieldset>
       <div className="payment-actions">{onCancel ? <button type="button" disabled={saving} onClick={onCancel}>Cancel</button> : null}<button type="submit" disabled={saving || (strategy === "exact" && exactMismatch)}>{saving ? "Saving…" : initialExpense ? "Save correction" : "Add expense"}</button></div>
@@ -280,7 +288,7 @@ export function TripDashboard({ tripId }: { tripId: string }) {
         <div className="dashboard-side">
           <section className="panel" aria-labelledby="balances-heading"><div className="section-heading"><h2 id="balances-heading">Balances</h2></div><p className="muted section-caption">Who should receive and who owes.</p>{balances ? <BalanceList balances={balances} /> : <p className="muted">Loading balances…</p>}</section>
           <section className="panel" aria-labelledby="suggested-payments-heading"><div className="section-heading"><h2 id="suggested-payments-heading">Suggested payments</h2></div><p className="muted section-caption">Mark as paid only after a payment happened outside TripTab.</p>{suggestionsError ? <p className="alert" role="alert">{suggestionsError}</p> : suggestions ? <SuggestedPayments tripId={tripId} travelers={travelers} suggestions={suggestions} onRecorded={load} /> : <p className="muted" role="status">Loading suggested payments…</p>}</section>
-          <section className="panel" aria-labelledby="travelers-heading"><div className="section-heading"><h2 id="travelers-heading">Travelers</h2><span className="count">{travelers.length}</span></div>{travelers.length === 0 ? <p className="muted">No travelers yet. Add the people sharing this trip.</p> : <div className="traveler-list">{travelers.map((traveler) => <div className="traveler-row" key={traveler.id}><span className="person-dot" aria-hidden="true">{traveler.display_name.charAt(0).toUpperCase()}</span>{traveler.display_name} <span className="strategy-pill">{traveler.role === "owner" ? "Owner" : traveler.user_id ? "Member" : "Guest"}</span></div>)}</div>}{owner ? <><TravelerForm tripId={tripId} onAdded={() => void load()} /><TravelerInvitations tripId={tripId} travelers={travelers} /></> : null}</section>
+          <section className="panel" aria-labelledby="travelers-heading"><div className="section-heading"><h2 id="travelers-heading">Travelers</h2><span className="count">{travelers.length}</span></div><TravelerInvitations tripId={tripId} travelers={travelers} canManage={owner} onChanged={load} />{owner ? <TravelerForm tripId={tripId} onAdded={() => void load()} /> : null}</section>
         </div>
       </div>
       <p className="dev-note">Private trip · Financial history is preserved</p>

@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -27,6 +28,7 @@ from app.domain import (
     SplitStrategy,
     User,
 )
+from app.persistence.models import GroupMemberRow, TripInvitationRow
 from app.persistence.repository import LedgerRepository
 
 
@@ -36,6 +38,10 @@ class ResourceNotFound(Exception):
 
 class FinancialConflict(Exception):
     """A financial record was already voided or corrected."""
+
+
+class MemberRemovalConflict(Exception):
+    """Only unclaimed guests without financial history can be removed."""
 
 
 class TripTabService:
@@ -52,7 +58,7 @@ class TripTabService:
 
     def _require_owner(self, group_id: UUID) -> None:
         if self._membership(group_id).role != "owner":
-            raise PermissionDenied("only the group owner may add travelers")
+            raise PermissionDenied("only the group owner may manage travelers")
 
     def _require_record_author(self, group_id: UUID, author_id: UUID) -> None:
         if (
@@ -102,6 +108,69 @@ class TripTabService:
     def list_members(self, group_id: UUID) -> tuple[GroupMember, ...]:
         self._group(group_id)
         return self.repo.list_members(group_id)
+
+    def remove_guest_member(self, group_id: UUID, member_id: UUID) -> None:
+        try:
+            with self.session.begin():
+                self._require_owner(group_id)
+                member = self.session.scalar(
+                    select(GroupMemberRow)
+                    .where(
+                        GroupMemberRow.group_id == group_id,
+                        GroupMemberRow.id == member_id,
+                    )
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                if member is None:
+                    raise ResourceNotFound("member not found")
+                if member.role == "owner" or member.user_id is not None:
+                    raise MemberRemovalConflict("only unclaimed guests can be removed")
+                if self.repo.has_member_financial_history(group_id, member_id):
+                    raise MemberRemovalConflict(
+                        "This traveler has financial history and cannot be removed."
+                    )
+                # Match the member-first invitation lock order.
+                self.session.execute(
+                    update(TripInvitationRow)
+                    .where(
+                        TripInvitationRow.group_id == group_id,
+                        TripInvitationRow.target_member_id == member_id,
+                        TripInvitationRow.accepted_at.is_(None),
+                        TripInvitationRow.revoked_at.is_(None),
+                    )
+                    .values(
+                        revoked_at=datetime.now(UTC),
+                        revoked_by_user_id=self.current_user.id,
+                    )
+                )
+                self.session.execute(
+                    update(TripInvitationRow)
+                    .where(
+                        TripInvitationRow.group_id == group_id,
+                        TripInvitationRow.target_member_id == member_id,
+                        TripInvitationRow.revoked_at.is_not(None),
+                    )
+                    .values(target_member_id=None)
+                )
+                self.session.delete(member)
+                self.session.flush()
+        except IntegrityError as error:
+            # A concurrent financial insert can win before the member lock. FKs
+            # remain the final defense; rollback also restores invitation metadata.
+            constraint = getattr(
+                getattr(error.orig, "diag", None), "constraint_name", None
+            )
+            if constraint in {
+                "fk_expenses_group_payer_member",
+                "fk_expense_splits_group_member",
+                "fk_settlements_group_sender",
+                "fk_settlements_group_recipient",
+            }:
+                raise MemberRemovalConflict(
+                    "This traveler has financial history and cannot be removed."
+                ) from None
+            raise
 
     def create_expense(
         self,

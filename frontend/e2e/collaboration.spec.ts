@@ -20,14 +20,25 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   const tripUrl = page.url();
   const tripId = tripUrl.split("/").pop()!;
   const travelers = page.getByRole("region", { name: "Travelers", exact: true });
-  for (const name of ["Bob", "Charlie"]) {
+  for (const name of ["Bob", "Charlie", "Unused Guest"]) {
     await travelers.getByLabel("Traveler name").fill(name);
     await travelers.getByRole("button", { name: "Add traveler" }).click();
     await expect(travelers.locator(".traveler-row").filter({ hasText: name })).toBeVisible();
   }
+  const unused = travelers.getByRole("group", { name: "Invitation for Unused Guest", exact: true });
+  await unused.getByRole("button", { name: "Invite to TripTab" }).click();
+  const unusedLink = await travelers.getByLabel("Invitation link").inputValue();
+  await unused.getByRole("button", { name: "Remove traveler" }).click();
+  await unused.getByRole("button", { name: "Confirm removal" }).click();
+  await expect(unused).toHaveCount(0);
+  const unavailable = await page.request.post("/api/v1/invitations/preview", { data: { token: new URL(unusedLink).hash.slice(7) }, headers: { Origin: "http://127.0.0.1:3100" } });
+  expect(unavailable.status()).toBe(404);
   const beforeMembers = await (await page.request.get(`/api/v1/groups/${tripId}/members`)).json();
   const bobId = beforeMembers.find((m: { display_name: string }) => m.display_name === "Bob").id;
   const form = page.getByRole("region", { name: "Add an expense", exact: true });
+  const aliceId = beforeMembers.find((m: { display_name: string }) => m.display_name === "Alice").id;
+  await expect(form.getByLabel("Paid by")).toHaveValue(aliceId);
+  for (const name of ["Alice", "Bob", "Charlie"]) await expect(form.getByRole("checkbox", { name, exact: true })).toBeChecked();
   await form.getByLabel("Description").fill("Bob's pre-invitation hotel");
   await form.getByLabel("Amount (NT$)").fill("900");
   await form.getByLabel("Paid by").selectOption({ label: "Bob" });
@@ -38,7 +49,13 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   const before = await (await page.request.get(`/api/v1/groups/${tripId}/expenses`)).json();
   const balances = page.getByRole("region", { name: "Balances", exact: true });
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$600");
-  await travelers.getByRole("group", { name: "Invitation for Bob", exact: true }).getByRole("button", { name: "Invite to TripTab" }).click();
+  const bobRow = travelers.getByRole("group", { name: "Invitation for Bob", exact: true });
+  await bobRow.getByRole("button", { name: "Remove traveler" }).click();
+  await bobRow.getByRole("button", { name: "Confirm removal" }).click();
+  await expect(travelers.getByRole("alert")).toContainText("financial history");
+  await expect(bobRow).toBeVisible();
+  await bobRow.getByRole("button", { name: "Cancel removal" }).click();
+  await bobRow.getByRole("button", { name: "Invite to TripTab" }).click();
   const link = await travelers.getByLabel("Invitation link").inputValue();
   const parsed = new URL(link);
   expect(parsed.pathname).toBe("/invite"); expect(parsed.search).toBe(""); expect(parsed.hash).toMatch(/^#token=[A-Za-z0-9_-]{43}$/);
@@ -62,6 +79,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await bob.getByRole("button", { name: "Join as Bob" }).click();
     await expect(bob).toHaveURL(tripUrl);
     expect(new URL(bob.url()).hash).toBe("");
+    await expect(bob.getByRole("region", { name: "Travelers", exact: true }).getByRole("group", { name: "Invitation for Bob", exact: true })).toContainText("Member");
     const members = await (await bob.request.get(`/api/v1/groups/${tripId}/members`)).json();
     expect(members).toHaveLength(3);
     expect(members.filter((m: { id: string }) => m.id === bobId)).toHaveLength(1);
@@ -77,16 +95,24 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await expect(bob.getByRole("link", { name: new RegExp(`Japan 2027 ${suffix}`) })).toBeVisible();
     await bob.goto(tripUrl);
     const expense = bob.getByRole("region", { name: "Add an expense", exact: true });
+    await expect(expense.getByLabel("Paid by")).toHaveValue(bobId);
+    for (const name of ["Alice", "Bob", "Charlie"]) await expect(expense.getByRole("checkbox", { name, exact: true })).toBeChecked();
     await expense.getByLabel("Description").fill("Bob records Charlie's taxi");
     await expense.getByLabel("Amount (NT$)").fill("120");
     await expense.getByLabel("Paid by").selectOption({ label: "Charlie" });
     await expense.getByLabel("When did it happen?").fill("2026-10-11T12:30");
-    for (const name of ["Bob", "Charlie"]) await expense.getByRole("checkbox", { name, exact: true }).check();
+    await expense.getByRole("checkbox", { name: "Alice", exact: true }).uncheck();
     await expense.getByRole("button", { name: "Add expense" }).click();
     await expect(bob.getByRole("region", { name: "Expense history", exact: true })).toContainText("Bob records Charlie's taxi");
     await page.reload();
     await expect(travelers.locator(".traveler-row").filter({ hasText: "Bob" })).toContainText("Member");
     await expect(travelers.locator(".traveler-row").filter({ hasText: "Bob" })).toHaveCount(1);
+    await expect(bobRow.getByRole("button", { name: "Remove traveler" })).toHaveCount(0);
+    await expect(bobRow.getByText("Accepted invitation")).toHaveCount(0);
+    await page.setViewportSize({ width: 375, height: 812 });
+    const charlieRow = travelers.getByRole("group", { name: "Invitation for Charlie", exact: true });
+    await expect(charlieRow.getByRole("button", { name: "Invite to TripTab" })).toBeVisible();
+    expect(await charlieRow.evaluate((row) => row.scrollWidth <= row.clientWidth)).toBe(true);
     await expect(page.getByRole("region", { name: "Expense history", exact: true })).toContainText("Bob records Charlie's taxi");
     await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$540");
     await expect(balances.locator(".balance-row").filter({ hasText: "Charlie" })).toContainText("owes NT$240");

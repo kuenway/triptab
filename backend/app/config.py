@@ -129,8 +129,11 @@ class Settings(BaseModel):
                 not origin.startswith("https://") for origin in self.allowed_origins
             ):
                 raise ValueError("production requires explicit HTTPS allowed origins")
+            # Keep legacy examples rejected as well as the current TripTab examples.
             unsafe = {
                 "splitwise_local_only",
+                "triptab_local_only",
+                "triptab_ci_only",
                 "splitwise_ci_only",
                 "password",
                 "postgres",

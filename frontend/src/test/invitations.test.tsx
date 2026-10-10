@@ -21,7 +21,7 @@ const travelers: Traveler[] = [
   { id: "alice", group_id: "trip", display_name: "Alice", role: "owner", user_id: "alice-user" },
   { id: "bob", group_id: "trip", display_name: "Bob", role: "member", user_id: null },
 ];
-const invitation: TripInvitation = { id: "invitation", group_id: "trip", target_member_id: "bob", created_by_user_id: "alice-user", created_at: "2026-10-11T12:00:00Z", expires_at: "2026-10-18T12:00:00Z", accepted_at: null, accepted_by_user_id: null, revoked_at: null, revoked_by_user_id: null, status: "pending" };
+const invitation: TripInvitation = { id: "invitation", group_id: "trip", target_member_id: "bob", target_member_snapshot_id: "bob", created_by_user_id: "alice-user", created_at: "2026-10-11T12:00:00Z", expires_at: "2026-10-18T12:00:00Z", accepted_at: null, accepted_by_user_id: null, revoked_at: null, revoked_by_user_id: null, status: "pending" };
 function page() { return render(<AuthProvider><InvitationPage /></AuthProvider>); }
 
 beforeEach(() => {
@@ -39,8 +39,8 @@ it("creates a private copyable fragment link, closes it and never recovers old r
   vi.mocked(api.listInvitations).mockResolvedValueOnce([]).mockResolvedValue([invitation]);
   const writeText = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
-  render(<TravelerInvitations tripId="trip" travelers={travelers} />);
-  expect(await screen.findByText("Bob: No invitation")).toBeTruthy();
+  render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} />);
+  expect(await screen.findByText("No invitation")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Invite to TripTab" }));
   const link = await screen.findByLabelText("Invitation link");
   expect(link).toHaveProperty("value", "http://localhost:3000/invite#token=" + token);
@@ -54,8 +54,9 @@ it("creates a private copyable fragment link, closes it and never recovers old r
 
 it.each(["pending", "accepted", "revoked", "expired"] as const)("shows owner %s metadata without recovering a bearer link", async (status) => {
   vi.mocked(api.listInvitations).mockResolvedValue([{ ...invitation, status }]);
-  render(<TravelerInvitations tripId="trip" travelers={status === "accepted" ? travelers.map((m) => m.id === "bob" ? { ...m, user_id: user.id } : m) : travelers} />);
-  expect(await screen.findByText(`Bob: ${status.charAt(0).toUpperCase()}${status.slice(1)} invitation`)).toBeTruthy();
+  render(<TravelerInvitations canManage={true} tripId="trip" travelers={status === "accepted" ? travelers.map((m) => m.id === "bob" ? { ...m, user_id: user.id } : m) : travelers} />);
+  if (status === "accepted") { expect(screen.getByText("Member")).toBeTruthy(); expect(screen.queryByText("Accepted invitation")).toBeNull(); }
+  else expect(await screen.findByText(`${status.charAt(0).toUpperCase()}${status.slice(1)} invitation`)).toBeTruthy();
   expect(screen.queryByLabelText("Invitation link")).toBeNull();
   if (status !== "pending") expect(screen.queryByRole("button", { name: "Revoke invitation" })).toBeNull();
 });
@@ -63,9 +64,9 @@ it.each(["pending", "accepted", "revoked", "expired"] as const)("shows owner %s 
 it("revokes a pending invitation and leaves the guest identity intact", async () => {
   vi.mocked(api.listInvitations).mockResolvedValueOnce([invitation]).mockResolvedValue([{ ...invitation, status: "revoked" }]);
   vi.mocked(api.revokeInvitation).mockResolvedValue({ ...invitation, status: "revoked" });
-  render(<TravelerInvitations tripId="trip" travelers={travelers} />);
+  render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} />);
   fireEvent.click(await screen.findByRole("button", { name: "Revoke invitation" }));
-  expect(await screen.findByText("Bob: Revoked invitation")).toBeTruthy();
+  expect(await screen.findByText("Revoked invitation")).toBeTruthy();
   expect(api.revokeInvitation).toHaveBeenCalledWith("trip", invitation.id);
   expect(travelers[1].user_id).toBeNull();
 });
@@ -74,7 +75,7 @@ it("shows creation, listing and clipboard errors safely", async () => {
   vi.mocked(api.listInvitations).mockRejectedValueOnce(new ApiError("Unavailable", 0)).mockResolvedValue([]);
   vi.mocked(api.createInvitation).mockRejectedValueOnce(new ApiError("traveler is already account-linked",409)).mockResolvedValue({ ...invitation,token });
   Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:vi.fn().mockRejectedValue(new Error("Denied"))}});
-  render(<TravelerInvitations tripId="trip" travelers={travelers} />);
+  render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} />);
   expect(await screen.findByRole("alert")).toHaveProperty("textContent","Could not load invitations. Try refreshing the trip.");
   fireEvent.click(screen.getByRole("button",{name:"Invite to TripTab"}));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent","traveler is already account-linked");
@@ -175,4 +176,55 @@ it("shows an identity conflict without clearing the pending invitation or naviga
   page();fireEvent.click(await screen.findByRole("button",{name:"Join as Bob"}));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent","account already has a traveler in this trip");
   expect(window.location.hash).toBe("#token="+token);expect(replace).not.toHaveBeenCalled();
+});
+
+it("keeps one traveler row, with owner-only Guest actions and no accepted invitation noise", async () => {
+  vi.mocked(api.listInvitations).mockResolvedValue([invitation]);
+  const view = render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} />);
+  const row = within(screen.getByRole("group", { name: "Invitation for Bob" }));
+  expect(await row.findByText("Pending invitation")).toBeTruthy();
+  expect(screen.getAllByText("Bob")).toHaveLength(1);
+  expect(row.getByText("Guest")).toBeTruthy();
+  expect(row.getByRole("button", { name: "Remove traveler" })).toBeTruthy();
+  const owner = within(screen.getByRole("group", { name: "Invitation for Alice" }));
+  expect(owner.queryByRole("button")).toBeNull();
+  view.rerender(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers.map((m) => m.id === "bob" ? { ...m, user_id: user.id } : m)} />);
+  expect(row.getByText("Member")).toBeTruthy();
+  expect(row.queryByRole("button")).toBeNull();
+  expect(row.queryByText(/invitation/i)).toBeNull();
+});
+
+it("hides invitation/removal management from normal Members", () => {
+  render(<TravelerInvitations canManage={false} tripId="trip" travelers={travelers} />);
+  expect(screen.queryByRole("button")).toBeNull();
+  expect(api.listInvitations).not.toHaveBeenCalled();
+});
+
+it("requires confirmation, can cancel and refreshes after removing an unused Guest", async () => {
+  vi.mocked(api.removeTraveler).mockResolvedValue(undefined);
+  const changed = vi.fn().mockResolvedValue(undefined);
+  render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} onChanged={changed} />);
+  fireEvent.click(screen.getByRole("button", { name: "Remove traveler" }));
+  expect(api.removeTraveler).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel removal" }));
+  expect(screen.queryByRole("button", { name: "Confirm removal" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Remove traveler" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm removal" }));
+  await waitFor(() => expect(changed).toHaveBeenCalledOnce());
+  expect(api.removeTraveler).toHaveBeenCalledWith("trip", "bob");
+  expect(screen.queryByRole("button", { name: "Confirm removal" })).toBeNull();
+});
+
+it("shows financial-history rejection without removing the traveler or invitation", async () => {
+  vi.mocked(api.listInvitations).mockResolvedValue([invitation]);
+  vi.mocked(api.removeTraveler).mockRejectedValue(new ApiError("This traveler has financial history and cannot be removed.", 409));
+  const changed = vi.fn();
+  render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} onChanged={changed} />);
+  await screen.findByText("Pending invitation");
+  fireEvent.click(screen.getByRole("button", { name: "Remove traveler" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm removal" }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "This traveler has financial history and cannot be removed.");
+  expect(screen.getByText("Bob")).toBeTruthy();
+  expect(screen.getByText("Pending invitation")).toBeTruthy();
+  expect(changed).not.toHaveBeenCalled();
 });

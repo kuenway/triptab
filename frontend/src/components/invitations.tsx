@@ -7,23 +7,25 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { api, ApiError, InvitationPreview, invitationToken, Traveler, TripInvitation } from "../lib/api";
 import { useAuth } from "./auth";
 
-export function TravelerInvitations({ tripId, travelers }: { tripId: string; travelers: Traveler[] }) {
+export function TravelerInvitations({ tripId, travelers, canManage, onChanged }: { tripId: string; travelers: Traveler[]; canManage: boolean; onChanged?: () => Promise<void> }) {
   const [invitations, setInvitations] = useState<TripInvitation[]>([]);
   const [link, setLink] = useState<{ memberId: string; url: string } | null>(null);
+  const [confirmRemoval, setConfirmRemoval] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const pending = useRef(false);
   const label = useId();
-  const load = useCallback(async () => { setInvitations(await api.listInvitations(tripId)); }, [tripId]);
+  const load = useCallback(async () => { if (canManage) setInvitations(await api.listInvitations(tripId)); }, [tripId, canManage]);
   useEffect(() => { void Promise.resolve().then(load).catch(() => setError("Could not load invitations. Try refreshing the trip.")); }, [load, travelers]);
 
-  async function change(member: Traveler, invitation?: TripInvitation) {
+  async function change(member: Traveler, invitation?: TripInvitation, remove = false) {
     if (pending.current) return;
     pending.current = true;
     setBusy(true); setError(""); setLink(null); setCopied(false);
     try {
-      if (invitation) await api.revokeInvitation(tripId, invitation.id);
+      if (remove) { await api.removeTraveler(tripId, member.id); setConfirmRemoval(null); await onChanged?.(); }
+      else if (invitation) await api.revokeInvitation(tripId, invitation.id);
       else {
         const created = await api.createInvitation(tripId, member.id);
         setLink({ memberId: member.id, url: `${window.location.origin}/invite#token=${encodeURIComponent(created.token)}` });
@@ -33,14 +35,19 @@ export function TravelerInvitations({ tripId, travelers }: { tripId: string; tra
     finally { pending.current = false; setBusy(false); }
   }
 
-  return <div className="stack-form">
-    {travelers.filter((member) => member.role !== "owner").map((member) => {
-      // The API returns newest first; history remains available to the owner.
+  return <div className="traveler-list">
+    {travelers.map((member) => {
+      const guest = member.role !== "owner" && !member.user_id;
+      // The API returns newest first. Detached audit never creates a traveler row.
       const latest = invitations.find((invitation) => invitation.target_member_id === member.id);
-      return <div role="group" aria-label={`Invitation for ${member.display_name}`} key={member.id} className="stack-form">
-        <p>{member.display_name}: {latest ? `${latest.status.charAt(0).toUpperCase()}${latest.status.slice(1)} invitation` : "No invitation"}</p>
-        {!member.user_id ? <div className="payment-actions"><button disabled={busy} onClick={() => void change(member)}>Invite to TripTab</button>{latest?.status === "pending" ? <button disabled={busy} onClick={() => void change(member, latest)}>Revoke invitation</button> : null}</div> : null}
-        {link?.memberId === member.id && !member.user_id ? <div className="stack-form">
+      return <div role="group" aria-label={`Invitation for ${member.display_name}`} key={member.id} className="traveler-row">
+        <span className="person-dot" aria-hidden="true">{member.display_name.charAt(0).toUpperCase()}</span>
+        <div className="traveler-identity"><span className="person-name">{member.display_name}</span> <span className="strategy-pill">{member.role === "owner" ? "Owner" : guest ? "Guest" : "Member"}</span>
+          {guest && canManage ? <small className="muted">{latest ? `${latest.status.charAt(0).toUpperCase()}${latest.status.slice(1)} invitation` : "No invitation"}</small> : null}
+        </div>
+        {guest && canManage ? <div className="traveler-actions"><button disabled={busy} onClick={() => void change(member)}>Invite to TripTab</button>{latest?.status === "pending" ? <button disabled={busy} onClick={() => void change(member, latest)}>Revoke invitation</button> : null}<button disabled={busy} onClick={() => { setError(""); setConfirmRemoval(member.id); }}>Remove traveler</button></div> : null}
+        {confirmRemoval === member.id && guest && canManage ? <div className="traveler-detail"><p>Remove {member.display_name} from this trip? Only an unused Guest can be removed. Any invitation will be revoked.</p><div className="payment-actions"><button disabled={busy} onClick={() => void change(member, undefined, true)}>Confirm removal</button><button disabled={busy} onClick={() => setConfirmRemoval(null)}>Cancel removal</button></div></div> : null}
+        {link?.memberId === member.id && guest && canManage ? <div className="stack-form traveler-detail">
           <label htmlFor={label}>Invitation link</label><input id={label} readOnly value={link.url} />
           <p className="muted">Share privately. Creating another invitation replaces this link. Closed links cannot be retrieved.</p>
           <div className="payment-actions"><button onClick={async () => { try { await navigator.clipboard.writeText(link.url); setCopied(true); } catch { setError("Could not copy. Select and copy the invitation link above."); } }}>Copy invite link</button><button onClick={() => setLink(null)}>Close invite link</button></div>

@@ -19,7 +19,11 @@ from app.application.auth import (
     PermissionDenied,
 )
 from app.application.invitations import InvitationConflict
-from app.application.service import FinancialConflict, ResourceNotFound
+from app.application.service import (
+    FinancialConflict,
+    MemberRemovalConflict,
+    ResourceNotFound,
+)
 from app.config import get_settings
 from app.domain import DomainValidationError
 from app.operations import (
@@ -35,6 +39,7 @@ CLIENT_ERRORS = {
     AccountConflict: (409, "account_conflict"),
     ResourceNotFound: (404, "resource_not_found"),
     FinancialConflict: (409, "financial_conflict"),
+    MemberRemovalConflict: (409, "member_conflict"),
     InvitationConflict: (409, "invitation_conflict"),
     DomainValidationError: (422, "domain_validation"),
     AccountingValidationError: (422, "accounting_validation"),

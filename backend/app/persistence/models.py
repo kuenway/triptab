@@ -361,6 +361,14 @@ class TripInvitationRow(Base):
         CheckConstraint(
             "revoked_at IS NULL OR revoked_at >= created_at", name="revoked_time"
         ),
+        CheckConstraint(
+            "target_member_id IS NOT NULL OR revoked_at IS NOT NULL",
+            name="detached_only_when_revoked",
+        ),
+        CheckConstraint(
+            "target_member_id IS NULL OR target_member_id = target_member_snapshot_id",
+            name="target_matches_snapshot",
+        ),
         Index("ix_trip_invitations_group_target", "group_id", "target_member_id"),
     )
 
@@ -368,7 +376,8 @@ class TripInvitationRow(Base):
     group_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("groups.id", ondelete="RESTRICT")
     )
-    target_member_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True))
+    target_member_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    target_member_snapshot_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True))
     token_hash: Mapped[str] = mapped_column(String(64))
     created_by_user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
