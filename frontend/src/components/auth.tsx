@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(state.user);
     } catch (cause) {
       setUser(null);
-      if (!(cause instanceof ApiError && cause.status === 401)) setError((cause as Error).message);
+      if (!(cause instanceof ApiError && cause.status === 401)) setError("Could not check your sign-in. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -53,12 +53,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }}>{children}</AuthContext.Provider>;
 }
 
+function AuthShell({ children }: { children: ReactNode }) {
+  return <main className="shell auth-shell">
+    <header className="auth-brand"><Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link><p className="muted">Split expenses with friends.</p></header>
+    {children}
+  </main>;
+}
+
+function AuthStatus() {
+  const auth = useAuth();
+  return <AuthShell><section className="panel stack-form auth-status">
+    {auth.error ? <><p role="alert" className="alert">{auth.error}</p><button onClick={() => void auth.refresh()}>Retry sign-in check</button></> : <p role="status" aria-live="polite">Loading…</p>}
+  </section></AuthShell>;
+}
+
 export function RequireAuth({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const router = useRouter();
   useEffect(() => { if (!auth.loading && !auth.user && !auth.error) router.replace("/login"); }, [auth.loading, auth.user, auth.error, router]);
-  if (auth.error) return <main className="shell"><p role="alert" className="alert">{auth.error}</p><button onClick={() => void auth.refresh()}>Retry sign-in check</button></main>;
-  if (auth.loading || !auth.user) return <main className="shell"><p role="status">{auth.loading ? "Checking sign-in…" : "Redirecting to login…"}</p><Link href="/login">Sign in</Link></main>;
+  if (auth.error || auth.loading || !auth.user) return <AuthStatus />;
   return children;
 }
 
@@ -110,9 +123,10 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     }
   }
 
-  return <main className="shell auth-shell">
-    <header className="site-header"><Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link></header>
-    <section className="panel"><h1>{registering ? "Create your account" : "Welcome back"}</h1><p className="muted">Keep your trips and shared expenses together.</p>
+  if (auth.loading || auth.error) return <AuthStatus />;
+
+  return <AuthShell>
+    <section className="panel"><h1>{registering ? "Create your account" : "Sign in"}</h1><p className="muted">{registering ? "Start sharing your trip expenses." : "Welcome back to your shared trips."}</p>
       <form className="stack-form" onSubmit={submit}>
         <fieldset disabled={saving || auth.loading} className="stack-form form-fields">
           {registering ? <><label htmlFor="auth-name">Display name</label><input id="auth-name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} required /></> : null}
@@ -126,5 +140,5 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       <p>{registering ? "Already have an account? " : "New to TripTab? "}<Link replace={Boolean(inviteToken)} href={`${registering ? "/login" : "/register"}${inviteToken ? `#token=${encodeURIComponent(inviteToken)}` : ""}`}>{registering ? "Log in" : "Create an account"}</Link></p>
       {inviteToken ? <p><Link replace href="/invite">Cancel invitation</Link></p> : null}
     </section>
-  </main>;
+  </AuthShell>;
 }

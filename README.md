@@ -8,7 +8,7 @@ financial history in PostgreSQL and owns the accounting.
 ## Requirements
 
 - Git
-- Node.js 22.13 or newer and npm 10 or newer
+- Node.js 22 (22.22.2 or newer within major 22; required by the locked development tooling) and npm 10 or newer; use `nvm use` with the root `.nvmrc`
 - Python 3.11 and [uv](https://docs.astral.sh/uv/)
 - Docker with Compose, for local PostgreSQL
 

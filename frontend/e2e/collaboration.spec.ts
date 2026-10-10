@@ -69,6 +69,10 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await expect(bob.getByText("You've been invited to join as Bob.")).toBeVisible();
     await bob.getByRole("link", { name: "Create account to join" }).click();
     await expect(bob).toHaveURL(/\/register#token=/);
+    await bob.getByRole("link", { name: "Log in", exact: true }).click();
+    await expect(bob).toHaveURL(/\/login#token=/);
+    await bob.getByRole("link", { name: "Create an account", exact: true }).click();
+    await expect(bob).toHaveURL(/\/register#token=/);
     await bob.getByLabel("Display name").fill("Robert");
     await bob.getByLabel("Email", { exact: true }).fill(`bob-collaboration-${suffix}@example.com`);
     await bob.getByLabel("Password", { exact: true }).fill(password);

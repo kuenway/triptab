@@ -129,7 +129,7 @@ async function request<T>(path: string, body?: object, method = body ? "POST" : 
       cache: "no-store",
     });
   } catch {
-    throw new ApiError("Could not reach TripTab. Check that the backend is running.", 0);
+    throw new ApiError("Could not reach TripTab. Please try again.", 0);
   }
   if (!response.ok) {
     if (response.status === 401 && !publicRequest) {

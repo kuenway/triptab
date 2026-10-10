@@ -1,0 +1,78 @@
+import { expect, test } from "@playwright/test";
+
+test("auth entry stays exclusive while checking, fits mobile, and resumes an invitation after login", async ({ page, browser }, testInfo) => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/api/v1/auth/me", async (route) => { await pending; await route.continue(); });
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("Loading…");
+  await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
+  await expect(page.getByLabel("Email", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Trip name")).toHaveCount(0);
+  release();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await page.unroute("**/api/v1/auth/me");
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 800 });
+    const card = await page.locator(".auth-shell .panel").boundingBox();
+    expect(card).not.toBeNull();
+    expect(card!.width).toBeLessThanOrEqual(440);
+    expect(card!.x).toBeGreaterThan(0);
+    expect(card!.x + card!.width).toBeLessThan(width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`auth-${width}.png`) });
+  }
+  await page.getByLabel("Email", { exact: true }).focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeFocused();
+  await page.getByRole("link", { name: "Create an account" }).click();
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const password = "TripTab auth entry test 123";
+  const email = `auth-entry-${suffix}@example.com`;
+  await page.getByLabel("Display name").fill("Alice");
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+  await expect(page.getByLabel("Trip name")).toBeVisible();
+  let resume!: () => void;
+  const checking = new Promise<void>((resolve) => { resume = resolve; });
+  await page.route("**/api/v1/auth/me", async (route) => { await checking; await route.continue(); });
+  await page.reload();
+  await expect(page.getByRole("status")).toHaveText("Loading…");
+  await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
+  resume();
+  await expect(page.getByLabel("Trip name")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
+  await page.unroute("**/api/v1/auth/me");
+  await page.getByLabel("Trip name").fill(`Auth invitation ${suffix}`);
+  await page.getByRole("button", { name: "Create trip" }).click();
+  await page.getByLabel("Traveler name").fill("Bob");
+  await page.getByRole("button", { name: "Add traveler" }).click();
+  await page.getByRole("button", { name: "Invite to TripTab" }).click();
+  const link = await page.getByLabel("Invitation link").inputValue();
+  const context = await browser.newContext();
+  try {
+    const bob = await context.newPage();
+    const bobEmail = `auth-bob-${suffix}@example.com`;
+    await bob.goto("/register");
+    await bob.getByLabel("Display name").fill("Robert");
+    await bob.getByLabel("Email", { exact: true }).fill(bobEmail);
+    await bob.getByLabel("Password", { exact: true }).fill(password);
+    await bob.getByRole("button", { name: "Register", exact: true }).click();
+    await bob.getByRole("button", { name: "Log out" }).click();
+    await expect(bob.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await bob.goto(link);
+    await bob.getByRole("link", { name: "Log in to join" }).click();
+    await expect(bob).toHaveURL(/\/login#token=/);
+    await bob.getByLabel("Email", { exact: true }).fill(bobEmail);
+    await bob.getByLabel("Password", { exact: true }).fill(password);
+    await bob.getByRole("button", { name: "Log in", exact: true }).click();
+    await expect(bob).toHaveURL(/\/invite#token=/);
+    await expect(bob.getByRole("button", { name: "Join as Bob" })).toBeVisible();
+    await bob.getByRole("button", { name: "Join as Bob" }).click();
+    await expect(bob).toHaveURL(/\/trips\/[^/#]+$/);
+    expect(await bob.evaluate(() => ({ hash: location.hash, local: localStorage.length, session: sessionStorage.length }))).toEqual({ hash: "", local: 0, session: 0 });
+  } finally { await context.close(); }
+});

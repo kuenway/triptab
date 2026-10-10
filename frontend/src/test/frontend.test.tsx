@@ -551,7 +551,7 @@ it.each(["register", "login"] as const)("submits the %s form and opens the authe
   vi.mocked(api.register).mockResolvedValue(authState);
   vi.mocked(api.login).mockResolvedValue(authState);
   render(<AuthForm mode={mode} />);
-  const button = screen.getByRole("button", { name: mode === "register" ? "Register" : "Log in" });
+  const button = await screen.findByRole("button", { name: mode === "register" ? "Register" : "Log in" });
   await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
   if (mode === "register") fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Alice" } });
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "alice@example.com" } });
@@ -567,7 +567,7 @@ it.each(["register", "login"] as const)("shows %s authentication errors without 
   vi.mocked(api.register).mockRejectedValue(new ApiError(message, 409));
   vi.mocked(api.login).mockRejectedValue(new ApiError(message, 401));
   render(<AuthForm mode={mode} />);
-  const button = screen.getByRole("button", { name: mode === "register" ? "Register" : "Log in" });
+  const button = await screen.findByRole("button", { name: mode === "register" ? "Register" : "Log in" });
   await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "alice@example.com" } });
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Wrong password 123" } });
@@ -582,10 +582,13 @@ it("waits for current-user loading before reading private trips", async () => {
   vi.mocked(api.getMe).mockReturnValue(new Promise((done) => { resolve = done; }));
   vi.mocked(api.listTrips).mockResolvedValue([trip]);
   render(<Home />);
-  expect(screen.getByRole("status")).toHaveProperty("textContent", "Checking sign-in…");
+  expect(screen.getByRole("status")).toHaveProperty("textContent", "Loading…");
   expect(api.listTrips).not.toHaveBeenCalled();
+  expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+  expect(screen.queryByLabelText("Email", { exact: true })).toBeNull();
   resolve(authState);
   expect(await screen.findByRole("link", { name: /Tokyo Weekend/ })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "Sign in" })).toBeNull();
 });
 
 it("directs logged-out users to login without reading private trips", async () => {
@@ -616,7 +619,7 @@ it("shows authentication connectivity errors without claiming the user is logged
   vi.mocked(api.getMe).mockRejectedValueOnce(new ApiError("Backend unavailable", 0)).mockResolvedValueOnce(authState);
   vi.mocked(api.listTrips).mockResolvedValue([]);
   render(<Home />);
-  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Backend unavailable");
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not check your sign-in. Please try again.");
   expect(replace).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Retry sign-in check" }));
   expect(await screen.findByText("No trips yet")).toBeTruthy();
@@ -705,4 +708,28 @@ it("keeps original payer and subset when opening a correction", () => {
   expect(screen.getByLabelText("Paid by")).toHaveProperty("value", "charlie");
   expect(screen.getByRole("checkbox", { name: "Bob" })).toHaveProperty("checked", true);
   expect(screen.getByRole("checkbox", { name: "Alice" })).toHaveProperty("checked", false);
+});
+
+it.each(["login", "register"] as const)("keeps %s loading exclusive until a 401 resolves and preserves navigation", async (mode) => {
+  let reject!: (error: Error) => void;
+  vi.mocked(api.getMe).mockReturnValue(new Promise((_, done) => { reject = done; }));
+  render(<AuthForm mode={mode} />);
+  expect(screen.getByRole("status")).toHaveProperty("textContent", "Loading…");
+  expect(screen.queryByRole("heading")).toBeNull();
+  expect(screen.queryByLabelText("Email", { exact: true })).toBeNull();
+  await waitFor(() => expect(api.getMe).toHaveBeenCalled());
+  reject(new ApiError("sign in required", 401));
+  expect(await screen.findByRole("heading", { name: mode === "login" ? "Sign in" : "Create your account" })).toBeTruthy();
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.getByRole("link", { name: mode === "login" ? "Create an account" : "Log in" })).toHaveProperty("href", "http://localhost:3000/" + (mode === "login" ? "register" : "login"));
+});
+
+it("offers retry instead of a login form when the initial session check fails", async () => {
+  vi.mocked(api.getMe).mockRejectedValueOnce(new ApiError("Internal server diagnostics", 503)).mockRejectedValueOnce(new ApiError("sign in required", 401));
+  render(<AuthForm mode="login" />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not check your sign-in. Please try again.");
+  expect(screen.queryByLabelText("Email", { exact: true })).toBeNull();
+  expect(screen.queryByText("Internal server diagnostics")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Retry sign-in check" }));
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
 });

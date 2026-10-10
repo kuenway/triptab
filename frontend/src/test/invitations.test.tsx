@@ -108,7 +108,7 @@ it.each(["login","register"] as const)("returns from %s to the invitation withou
   window.history.replaceState(null,"","/"+mode+"#token="+token);
   vi.mocked(api.login).mockResolvedValue(state); vi.mocked(api.register).mockResolvedValue(state);
   render(<AuthProvider><AuthForm mode={mode} /></AuthProvider>);
-  const submit=screen.getByRole("button",{name:mode==="login"?"Log in":"Register"});
+  const submit=await screen.findByRole("button",{name:mode==="login"?"Log in":"Register"});
   await waitFor(()=>expect(submit.hasAttribute("disabled")).toBe(false));
   fireEvent.change(screen.getByLabelText("Email",{exact:true}),{target:{value:user.email}});
   fireEvent.change(screen.getByLabelText("Password",{exact:true}),{target:{value:"TripTab test password 123"}});

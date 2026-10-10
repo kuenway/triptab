@@ -51,7 +51,11 @@ No persistent backend filesystem is needed.
 
 For Vercel, create/use one TripTab project with Next.js preset, repository root
 directory `frontend`, Node **22.x**, install `npm ci`, build `npm run build` and
-framework-default output. Set the server-only backend origin before building.
+framework-default output. The repository requires Node 22.22.2+ within major 22,
+matching `.nvmrc` and CI. At release time, remove any Node 24 Production Override
+so production inherits the Node 22.x project setting; confirm the resulting
+deployment runtime is Node 22. Do not change provider runtime settings during
+local milestone implementation. Set the server-only backend origin before building.
 No duplicate frontend or API functions are needed. `next.config.ts` owns rewrites
 and headers; `frontend/vercel.json` only disables automatic Git deployments.
 The public production alias must be usable without Vercel deployment protection.
