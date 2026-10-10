@@ -134,7 +134,9 @@ Expired/revoked session cleanup remains deferred.
 
 ## Backup and recovery
 
-Use PostgreSQL 17 native tools compatible with the deployed server. `pg_dump -Fc`
+Use PostgreSQL 18 native tools for the Neon production server. PostgreSQL 17
+`pg_dump` cannot export a PostgreSQL 18 server. The local Compose drill still uses
+its container's PostgreSQL 17 tools; local volumes are unchanged. `pg_dump -Fc`
 creates a consistent logical archive while PostgreSQL runs. Never copy live Docker
 volume files as a backup. Archives contain account hashes, session material and
 private financial data: encrypt them, restrict access, store off-host, and define
@@ -155,8 +157,8 @@ upgrade if needed and run `alembic check`. Compare users, memberships, financial
 rows, void/replacement links and balances against expected backup data; check
 health/readiness. Retain the source until accepted and remove only the disposable
 verification DB. Do not run tests blindly on a real restored DB; fixtures intentionally
-require `*_test`. See [pg_dump](https://www.postgresql.org/docs/17/app-pgdump.html)
-and [pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html).
+require `*_test`. See [pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html)
+and [pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html).
 
 For Neon use a **direct** endpoint and certificate-verifying TLS for both tools.
 Create the empty destination through Neon database controls or native `createdb`

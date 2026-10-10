@@ -10,8 +10,11 @@ alone does not establish that any production resource or backup exists.
 
 The approved base cost is **$0/month**: Vercel Hobby, one Render Free web service
 in Singapore (512 MB, 0.1 CPU), and one Neon Free project in AWS Singapore
-(`aws-ap-southeast-1`) with PostgreSQL **17**, database `triptab`, and a dedicated
-generated-password role owning that database. Match the local/CI major version.
+(`aws-ap-southeast-1`) with PostgreSQL **18**, database `triptab`, and a dedicated
+generated-password role owning that database. The existing Neon project uses
+PostgreSQL 18. Local Compose remains PostgreSQL 17; backend CI covers both majors,
+and the production-build browser flow uses PostgreSQL 18. Do not replace the local
+volume to change its major version.
 Do not create Render PostgreSQL, enable paid add-ons, upgrade plans, or add a
 payment method to bypass a free-plan limit without explicit approval. Check the
 actual organization/workspace billing tier and overage controls before provisioning;
@@ -99,11 +102,14 @@ Verify the installed client and actual Render connection, certificate/hostname
 checks and channel binding before acceptance. A successful `/ready` with the
 verified TLS options and required channel binding demonstrates that the deployed
 client can authenticate securely; inspect only sanitized connection diagnostics.
+The local Mac operator check required `SSL_CERT_FILE` to select the existing
+trusted CA bundle returned by `ssl.get_default_verify_paths().cafile`; this keeps
+`sslrootcert=system` and hostname verification. Do not copy that Mac path to Render.
 Do not hard-code a Render CA filesystem path. If system roots are unavailable,
 investigate the installed client/trust configuration without weakening TLS.
 
 Live [Neon pricing](https://neon.com/pricing) and
-[plan documentation](https://neon.com/docs/introduction/plans), checked **2026-10-09**,
+[plan documentation](https://neon.com/docs/introduction/plans), checked **2026-10-10**,
 currently report 100 CU-hours/project/month, 1 GB PostgreSQL storage/project,
 5 GB public egress/project/month, 10 branches/project and a six-hour instant-restore
 window capped at 1 GB of change history. Free scale-to-zero is mandatory after
@@ -115,9 +121,11 @@ storage exhaustion blocks writes. Limits do not delete existing data. No automat
 paid upgrade is permitted.
 
 Verify the project's actual restore window after creation; pricing alone is not
-backup evidence. After smoke data, produce a native PostgreSQL 17 `pg_dump -Fc`
-logical export and validate a restore into an empty separate database. Create the
-destination explicitly; do not rely on dump/restore `--create` or `pg_dumpall` with
+backup evidence. After smoke data, produce a native PostgreSQL 18 `pg_dump -Fc`
+logical export and validate a restore into an empty separate database. PostgreSQL
+17 `pg_dump` cannot export an 18 server; use 18 clients for production and retain
+17 clients for the local Compose drill. Keep the destination on major version 18.
+Create the destination explicitly; do not rely on dump/restore `--create` or `pg_dumpall` with
 Neon. Use `pg_restore --no-owner --no-acl --exit-on-error`. Revoke restored sessions
 before routing traffic to recovered data. Keep archives encrypted, restricted and
 outside Git. The six-hour recovery window does not replace off-provider exports.
@@ -135,8 +143,8 @@ no paid storage or scheduler is provisioned implicitly. See
    Use that immutable green commit for both provider deployments.
 3. Reserve a Vercel project and its production alias without serving a preview as
    the product. Record its exact HTTPS origin, resolving the bootstrap dependency.
-4. Provision Neon Free PostgreSQL 17; verify the plan, region, database, TLS and
-   live limits. Supply its direct URL only through protected runtime secrets.
+4. Use the existing Neon Free PostgreSQL 18 project; verify the plan, region,
+   database, TLS and live limits. Supply its direct URL only through protected runtime secrets.
    Manually migrate from the exact green commit and verify head/check. Only then
    create/deploy the Render Free service (creation may start an initial deploy),
    supplying the reserved browser origin in `TRIPTAB_ALLOWED_ORIGINS`.
