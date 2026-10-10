@@ -160,12 +160,21 @@ maintain links. Existing list responses retain full history and add `status`,
 `void_reason`, `void_created_at`, `void_created_by_user_id`, `replaces_id`, and
 `replaced_by_id`. Expense detail returns this metadata too. IDs are nonrecursive.
 
-The frontend displays these statuses, reasons, and links in the existing expense
-and payment histories. Active records offer Correct and Void. A correction form
-starts with the original values and requires a reason and complete replacement;
-a void asks for confirmation and a reason. Both explain that the original stays
-in history. Every successful change refreshes expenses, payments, balances, and
-suggestions from the API. The frontend does no balance arithmetic.
+The frontend's **Current expenses** and **Current payments** lists contain only
+active records. Voided records and previous versions remain in a collapsed
+**Show expense/payment history** section, with reasons, recorded/void timestamps,
+and links showing the amounts of immediate earlier/later versions. A current
+replacement's **View edit history** link opens that section and reveals its
+previous version. History is read-only; normal current records need no Active badge.
+
+Active records offer **Edit** and an accessible trash-can **Delete expense/payment**
+action. Edit starts with the original values and saves through the existing
+correction endpoint: a complete replacement and the original's void are committed
+atomically. Delete asks for confirmation and a reason, then uses the existing void
+endpoint; it never deletes financial rows. Both explain that the previous record
+stays in history. Every successful change refreshes expenses, payments, balances,
+and suggestions from the API. Retrieval still returns full audit history; only
+its presentation is separated. The frontend does no balance arithmetic.
 
 All six creation/void/correction operations use the authenticated User as actor.
 Original history keeps its original actor ID even when corrected by an owner.

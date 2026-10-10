@@ -6,7 +6,7 @@ import { FormEvent, useCallback, useEffect, useId, useRef, useState } from "reac
 import { api, ApiError, Balances, Expense, ExpenseInput, Settlement, SettlementSuggestions, Traveler, Trip } from "../lib/api";
 import { PaymentForm, PaymentHistory, SuggestedPayments } from "./payments";
 
-import { AuditDetails, FinancialActions, localDateTime } from "./financial-history";
+import { AuditDetails, FinancialActions, FinancialHistory, localDateTime } from "./financial-history";
 
 import { AccountMenu, useAuth } from "./auth";
 import { TravelerInvitations } from "./invitations";
@@ -64,10 +64,10 @@ export function ExpenseHistory({ expenses, travelers, tripId, onChanged }: { exp
   const { user } = useAuth();
   const owner = travelers.some((traveler) => traveler.user_id === user?.id && traveler.role === "owner");
   const names = Object.fromEntries(travelers.map((traveler) => [traveler.id, traveler.display_name]));
-  if (expenses.length === 0) return <p className="muted">No expenses yet. Add one to start the tab.</p>;
+  const amounts = Object.fromEntries(expenses.map((expense) => [expense.id, money(expense.amount)]));
   return (
-    <div className="expense-list">
-      {expenses.map((expense) => (
+    <FinancialHistory records={expenses} kind="expense">
+      {(expense) => (
         <article className="expense-item" id={`expense-${expense.id}`} key={expense.id}>
           <div className="expense-topline">
             <div><h3>{expense.description}</h3><p className="muted">Paid by {names[expense.payer_member_id] ?? "Traveler"} · {new Date(expense.occurred_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</p></div>
@@ -79,11 +79,11 @@ export function ExpenseHistory({ expenses, travelers, tripId, onChanged }: { exp
               <span key={split.member_id}>{names[split.member_id] ?? "Traveler"} {money(split.amount)}</span>
             ))}
           </div>
-          <AuditDetails record={expense} kind="expense" />
+          <AuditDetails record={expense} kind="expense" amounts={amounts} />
           {tripId && onChanged && (owner || expense.created_by_user_id === user?.id) ? <FinancialActions tripId={tripId} record={expense} kind="expense" onChanged={onChanged} correction={(close) => <ExpenseForm tripId={tripId} travelers={travelers} initialExpense={expense} onCancel={close} onCreated={async () => { await onChanged(); close(); }} />} /> : null}
         </article>
-      ))}
-    </div>
+      )}
+    </FinancialHistory>
   );
 }
 
@@ -174,7 +174,7 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
 
   return (
     <form onSubmit={submit} onChange={() => setParticipants((current) => current ?? participants)} className="stack-form expense-form">
-      {initialExpense ? <><p>The original expense will remain in history and will be marked void. This saves a new replacement record.</p><label htmlFor={`${prefix}-reason`}>Reason</label><input id={`${prefix}-reason`} value={reason} onChange={(event) => setReason(event.target.value)} required disabled={saving} /></> : null}
+      {initialExpense ? <><p>Your updated expense will appear in the current list. The previous version stays in history.</p><label htmlFor={`${prefix}-reason`}>Reason</label><input id={`${prefix}-reason`} value={reason} onChange={(event) => setReason(event.target.value)} required disabled={saving} /></> : null}
       <fieldset disabled={saving} className="stack-form form-fields">
       <div className="two-fields">
         <div><label htmlFor={`${prefix}-expense-description`}>Description</label><input id={`${prefix}-expense-description`} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="e.g. Dinner" required /></div>
@@ -213,7 +213,7 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
       {!initialExpense && !ownMemberId ? <p className="field-hint">Your traveler membership could not be resolved. Choose who paid explicitly or refresh the trip.</p> : null}
       {error ? <p className="alert" role="alert">{error}</p> : null}
       </fieldset>
-      <div className="payment-actions">{onCancel ? <button type="button" disabled={saving} onClick={onCancel}>Cancel</button> : null}<button type="submit" disabled={saving || (strategy === "exact" && exactMismatch)}>{saving ? "Saving…" : initialExpense ? "Save correction" : "Add expense"}</button></div>
+      <div className="payment-actions">{onCancel ? <button type="button" disabled={saving} onClick={onCancel}>Cancel</button> : null}<button type="submit" disabled={saving || (strategy === "exact" && exactMismatch)}>{saving ? "Saving…" : initialExpense ? "Save changes" : "Add expense"}</button></div>
       {saved ? <div className="success" role="status"><strong>Expense saved.</strong> Stored split: {saved.splits.map((split) => `${names[split.member_id] ?? "Traveler"} ${money(split.amount)}`).join(" · ")}</div> : null}
     </form>
   );
@@ -281,9 +281,9 @@ export function TripDashboard({ tripId }: { tripId: string }) {
       <div className="dashboard-grid">
         <div className="dashboard-main">
           <section className="panel" aria-labelledby="add-expense-heading"><div className="section-heading"><h2 id="add-expense-heading">Add an expense</h2></div><ExpenseForm tripId={tripId} travelers={travelers} onCreated={() => void load()} /></section>
-          <section className="panel" aria-labelledby="expenses-heading"><div className="section-heading"><h2 id="expenses-heading">Expense history</h2><span className="count">{expenses.length}</span></div><ExpenseHistory expenses={expenses} travelers={travelers} tripId={tripId} onChanged={load} /></section>
+          <section className="panel" aria-labelledby="expenses-heading"><div className="section-heading"><h2 id="expenses-heading">Current expenses</h2><span className="count">{expenses.filter((expense) => expense.status === "active").length}</span></div><ExpenseHistory expenses={expenses} travelers={travelers} tripId={tripId} onChanged={load} /></section>
           <section className="panel" aria-labelledby="record-payment-heading"><div className="section-heading"><h2 id="record-payment-heading">Record payment</h2></div><PaymentForm tripId={tripId} travelers={travelers} onRecorded={load} /></section>
-          <section className="panel" aria-labelledby="payment-history-heading"><div className="section-heading"><h2 id="payment-history-heading">Payment history</h2></div>{paymentsError ? <p className="alert" role="alert">{paymentsError}</p> : payments ? <PaymentHistory payments={payments} travelers={travelers} tripId={tripId} onChanged={load} /> : <p className="muted" role="status">Loading payment history…</p>}</section>
+          <section className="panel" aria-labelledby="payment-history-heading"><div className="section-heading"><h2 id="payment-history-heading">Current payments</h2></div>{paymentsError ? <p className="alert" role="alert">{paymentsError}</p> : payments ? <PaymentHistory payments={payments} travelers={travelers} tripId={tripId} onChanged={load} /> : <p className="muted" role="status">Loading payment history…</p>}</section>
         </div>
         <div className="dashboard-side">
           <section className="panel" aria-labelledby="balances-heading"><div className="section-heading"><h2 id="balances-heading">Balances</h2></div><p className="muted section-caption">Who should receive and who owes.</p>{balances ? <BalanceList balances={balances} /> : <p className="muted">Loading balances…</p>}</section>

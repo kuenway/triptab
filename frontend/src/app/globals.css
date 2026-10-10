@@ -121,6 +121,12 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .audit-details { margin-top: 1rem; font-size: .875rem; }
 .audit-details p { margin: .35rem 0; }
 .audit-actions { margin-top: 1rem; }
+.audit-actions button { min-width: 44px; min-height: 44px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; background: white; color: var(--teal-dark); }
+.audit-actions .delete-record { display: inline-flex; align-items: center; justify-content: center; color: #8b3025; }
+.financial-history { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px; }
+.financial-history summary { cursor: pointer; color: var(--teal-dark); font-size: .875rem; font-weight: 600; }
+.financial-history > p { margin: 12px 0; font-size: .83rem; }
+.audit-details a { text-decoration: underline; text-underline-offset: 3px; }
 
 .auth-shell { max-width: 580px; }
 .account-menu { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }

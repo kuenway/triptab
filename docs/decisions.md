@@ -47,3 +47,9 @@ is weakened and no member identity/history is merged or moved. Linked Member
 removal and ownership transfer remain deferred. Active repository identifiers use
 TripTab/triptab; legacy password rejection fixtures and the preserved old local
 Docker volume are deliberate exceptions.
+
+Milestone 14 changes financial-history presentation only. Current expense/payment
+lists show active records; native collapsed history sections retain voided records
+and replacement chains. Edit and the confirmed trash action reuse the existing
+correction/void APIs, authorization and immutable accounting model. No API, schema,
+dependency or production changes are required.

@@ -4,7 +4,7 @@ import { FormEvent, useId, useRef, useState } from "react";
 
 import { api, ApiError, Settlement, SettlementSuggestions, Traveler } from "../lib/api";
 
-import { AuditDetails, FinancialActions, localDateTime } from "./financial-history";
+import { AuditDetails, FinancialActions, FinancialHistory, localDateTime } from "./financial-history";
 
 import { useAuth } from "./auth";
 
@@ -83,7 +83,7 @@ export function PaymentForm({ tripId, travelers, suggestion, onRecorded, onCance
 
   return (
     <form onSubmit={submit} className="stack-form">
-      {initialPayment ? <><p>The original payment will remain in history and will be marked void. This saves a new replacement record.</p><label htmlFor={`${prefix}-reason`}>Reason</label><input id={`${prefix}-reason`} value={reason} onChange={(event) => setReason(event.target.value)} disabled={saving} required /></> : null}
+      {initialPayment ? <><p>Your updated payment will appear in the current list. The previous version stays in history.</p><label htmlFor={`${prefix}-reason`}>Reason</label><input id={`${prefix}-reason`} value={reason} onChange={(event) => setReason(event.target.value)} disabled={saving} required /></> : null}
       {suggestion ? <p>This records that {suggestion.from_display_name} paid {suggestion.to_display_name} {money(suggestion.amount)} outside TripTab. Only confirm after the payment occurred.</p> : <p className="muted">Record a payment that already happened outside TripTab. Partial payments and overpayments are allowed.</p>}
       <p className="muted">TripTab does not transfer money.</p>
       {!suggestion ? <>
@@ -97,7 +97,7 @@ export function PaymentForm({ tripId, travelers, suggestion, onRecorded, onCance
       {error ? <p className="alert" role="alert">{error}</p> : null}
       <div className="payment-actions">
         {onCancel ? <button type="button" onClick={onCancel} disabled={saving}>Cancel</button> : null}
-        <button type="submit" disabled={saving}>{saving ? "Recording…" : initialPayment ? "Save correction" : "Record payment"}</button>
+        <button type="submit" disabled={saving}>{saving ? "Recording…" : initialPayment ? "Save changes" : "Record payment"}</button>
       </div>
       {saved ? <p className="success" role="status">Payment recorded.</p> : null}
     </form>
@@ -133,12 +133,12 @@ export function SuggestedPayments({ tripId, travelers, suggestions, onRecorded }
 export function PaymentHistory({ payments, travelers = [], tripId, onChanged }: { payments: Settlement[]; travelers?: Traveler[]; tripId?: string; onChanged?: () => Promise<void> }) {
   const { user } = useAuth();
   const owner = travelers.some((traveler) => traveler.user_id === user?.id && traveler.role === "owner");
-  if (payments.length === 0) return <p className="muted">No payments recorded yet.</p>;
-  return <div className="expense-list">{payments.map((payment) => (
+  const amounts = Object.fromEntries(payments.map((payment) => [payment.id, money(payment.amount)]));
+  return <FinancialHistory records={payments} kind="payment">{(payment) => (
     <article className="expense-item" id={`payment-${payment.id}`} key={payment.id}>
       <div className="expense-topline"><div><h3>{payment.from_display_name} paid {payment.to_display_name}</h3><p className="muted">{new Date(payment.occurred_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</p></div><strong className="expense-amount">{money(payment.amount)}</strong></div>
-      <AuditDetails record={payment} kind="payment" />
+      <AuditDetails record={payment} kind="payment" amounts={amounts} />
       {tripId && onChanged && (owner || payment.created_by_user_id === user?.id) ? <FinancialActions tripId={tripId} record={payment} kind="payment" onChanged={onChanged} correction={(close) => <PaymentForm tripId={tripId} travelers={travelers} initialPayment={payment} onCancel={close} onRecorded={async () => { await onChanged(); close(); }} />} /> : null}
     </article>
-  ))}</div>;
+  )}</FinancialHistory>;
 }

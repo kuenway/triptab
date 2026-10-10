@@ -356,15 +356,15 @@ it("shows payment history read errors without presenting an empty history", asyn
   expect(screen.queryByText("No payments recorded yet.")).toBeNull();
 });
 
-it.each(["expense", "payment"] as const)("prepopulates %s correction and sends a complete replacement", async (kind) => {
+it.each(["expense", "payment"] as const)("prepopulates %s editing and sends a complete replacement", async (kind) => {
   const onChanged = vi.fn().mockResolvedValue(undefined);
   vi.mocked(api.correctExpense).mockResolvedValue({ ...expense, id: "replacement", amount: 990 });
   vi.mocked(api.correctSettlement).mockResolvedValue({ ...payment, id: "replacement", amount: 200 });
   if (kind === "expense") render(<ExpenseHistory expenses={[expense]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
   else render(<PaymentHistory payments={[payment]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Correct" }));
-  const editor = within(screen.getByRole("group", { name: `Correct ${kind}` }));
-  expect(editor.getByText(/original .* will remain in history and will be marked void/)).toBeTruthy();
+  fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+  const editor = within(screen.getByRole("group", { name: `Edit ${kind}` }));
+  expect(editor.getByText(/previous version stays in history/)).toBeTruthy();
   if (kind === "expense") {
     expect(editor.getByLabelText("Description")).toHaveProperty("value", "Dinner");
     expect(editor.getByLabelText("Paid by")).toHaveProperty("value", "alice");
@@ -375,7 +375,7 @@ it.each(["expense", "payment"] as const)("prepopulates %s correction and sends a
   }
   fireEvent.change(editor.getByLabelText("Reason"), { target: { value: "Wrong amount" } });
   fireEvent.change(editor.getByLabelText(kind === "expense" ? "Amount (NT$)" : "Payment amount (NT$)"), { target: { value: kind === "expense" ? "990" : "200" } });
-  fireEvent.click(editor.getByRole("button", { name: "Save correction" }));
+  fireEvent.click(editor.getByRole("button", { name: "Save changes" }));
   const method = kind === "expense" ? api.correctExpense : api.correctSettlement;
   await waitFor(() => expect(method).toHaveBeenCalledWith(trip.id, kind === "expense" ? expense.id : payment.id, "Wrong amount", expect.objectContaining(kind === "expense" ? { description: "Dinner", payer_member_id: "alice", amount: 990, split_strategy: "equal", participant_member_ids: ["alice", "bob", "charlie"], occurred_at: expect.any(String) } : { from_member_id: "bob", to_member_id: "alice", amount: 200, occurred_at: expect.any(String) })));
   await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
@@ -391,7 +391,7 @@ it("prepopulates Exact allocations for correction", async () => {
   expect(screen.getByLabelText("Alice allocation")).toHaveProperty("value", "500");
   expect(screen.getByLabelText("Bob allocation")).toHaveProperty("value", "400");
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Receipt allocations" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save correction" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(api.correctExpense).toHaveBeenCalledWith(trip.id, expense.id, "Receipt allocations", expect.objectContaining({ split_strategy: "exact", splits: exact.splits })));
 });
 
@@ -404,12 +404,12 @@ it.each(["expense", "payment"] as const)("confirms %s void and refreshes the aut
   vi.mocked(api.voidExpense).mockResolvedValue({ ...expense, status: "voided" });
   vi.mocked(api.voidSettlement).mockResolvedValue({ ...payment, status: "voided" });
   render(<TripDashboard tripId={trip.id} />);
-  const history = within(await screen.findByRole("region", { name: kind === "expense" ? "Expense history" : "Payment history" }));
-  fireEvent.click(history.getByRole("button", { name: "Void" }));
-  const confirmation = within(history.getByRole("form", { name: `Void ${kind}` }));
+  const history = within(await screen.findByRole("region", { name: kind === "expense" ? "Current expenses" : "Current payments" }));
+  fireEvent.click(history.getByRole("button", { name: `Delete ${kind}` }));
+  const confirmation = within(history.getByRole("form", { name: `Delete ${kind}` }));
   expect(confirmation.getByText("This keeps the original record in history but removes it from current balances.")).toBeTruthy();
   fireEvent.change(confirmation.getByLabelText("Reason"), { target: { value: "Wrong record" } });
-  fireEvent.click(confirmation.getByRole("button", { name: `Confirm void ${kind}` }));
+  fireEvent.click(confirmation.getByRole("button", { name: `Confirm delete ${kind}` }));
   await waitFor(() => expect(kind === "expense" ? api.voidExpense : api.voidSettlement).toHaveBeenCalledWith(trip.id, kind === "expense" ? expense.id : payment.id, "Wrong record"));
   await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(2));
   expect(await screen.findByText("Everyone is settled up.")).toBeTruthy();
@@ -426,11 +426,11 @@ it.each(["expense", "payment"] as const)("refreshes balances, suggestions and bo
   vi.mocked(api.correctSettlement).mockResolvedValue({ ...payment, id: "replacement" });
   vi.mocked(api.getSettlementSuggestions).mockResolvedValueOnce(suggestions).mockResolvedValueOnce({ ...suggestions, suggestions: [] });
   render(<TripDashboard tripId={trip.id} />);
-  const history = within(await screen.findByRole("region", { name: kind === "expense" ? "Expense history" : "Payment history" }));
-  fireEvent.click(history.getByRole("button", { name: "Correct" }));
-  const editor = within(history.getByRole("group", { name: `Correct ${kind}` }));
+  const history = within(await screen.findByRole("region", { name: kind === "expense" ? "Current expenses" : "Current payments" }));
+  fireEvent.click(history.getByRole("button", { name: "Edit" }));
+  const editor = within(history.getByRole("group", { name: `Edit ${kind}` }));
   fireEvent.change(editor.getByLabelText("Reason"), { target: { value: "Receipt" } });
-  fireEvent.click(editor.getByRole("button", { name: "Save correction" }));
+  fireEvent.click(editor.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(2));
   expect(await screen.findByText("Everyone is settled up.")).toBeTruthy();
   expect(api.listExpenses).toHaveBeenCalledTimes(2);
@@ -438,15 +438,82 @@ it.each(["expense", "payment"] as const)("refreshes balances, suggestions and bo
 });
 
 it.each(["expense", "payment"] as const)("renders %s audit reasons and replacement links without actions on voided records", (kind) => {
-  const audit = { status: "voided" as const, void_reason: "Wrong receipt", replaces_id: "first", replaced_by_id: "third" };
+  const audit = { status: "voided" as const, void_reason: "Wrong receipt", void_created_at: "2026-10-04T09:00:00Z", replaces_id: "first", replaced_by_id: "third" };
   if (kind === "expense") render(<ExpenseHistory expenses={[{ ...expense, ...audit }]} travelers={travelers} tripId={trip.id} onChanged={vi.fn()} />);
   else render(<PaymentHistory payments={[{ ...payment, ...audit }]} travelers={travelers} tripId={trip.id} onChanged={vi.fn()} />);
-  expect(screen.getByText("Voided · excluded from current balances")).toBeTruthy();
+  fireEvent.click(screen.getByText(`Show ${kind} history (1)`));
+  expect(screen.getByText("Voided", { selector: "strong" })).toBeTruthy();
   expect(screen.getByText("Reason: Wrong receipt")).toBeTruthy();
-  expect(screen.getByRole("link", { name: `Replaces original ${kind}` }).getAttribute("href")).toBe(`#${kind}-first`);
+  expect(screen.getByRole("link", { name: `Replaces an earlier ${kind}` }).getAttribute("href")).toBe(`#${kind}-first`);
   expect(screen.getByRole("link", { name: `Replaced by another ${kind}` }).getAttribute("href")).toBe(`#${kind}-third`);
-  expect(screen.queryByRole("button", { name: "Correct" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Void" })).toBeNull();
+  const created = kind === "expense" ? expense.created_at : payment.created_at;
+  expect(screen.getByText(new Date(created).toLocaleString()).closest("time")?.getAttribute("datetime")).toBe(created);
+  expect(screen.getByText(new Date(audit.void_created_at).toLocaleString()).closest("time")?.getAttribute("datetime")).toBe(audit.void_created_at);
+  expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  expect(screen.queryByRole("button", { name: `Delete ${kind}` })).toBeNull();
+});
+
+it.each(["expense", "payment"] as const)("separates current %ss from read-only history and opens the edit chain", async (kind) => {
+  const earlier = { status: "voided" as const, void_reason: "First edit", replaced_by_id: "middle", id: "earlier", amount: 300 };
+  const middle = { status: "voided" as const, void_reason: "Second edit", replaces_id: "earlier", replaced_by_id: "latest", id: "middle", amount: 400 };
+  const latest = { status: "active" as const, replaces_id: "middle", id: "latest", amount: 500 };
+  const removed = { status: "voided" as const, void_reason: "Duplicate", id: "removed", amount: 100 };
+  if (kind === "expense") render(<ExpenseHistory expenses={[latest, middle, earlier, removed].map((r) => ({ ...expense, ...r }))} travelers={travelers} tripId={trip.id} onChanged={vi.fn()} />);
+  else render(<PaymentHistory payments={[latest, middle, earlier, removed].map((r) => ({ ...payment, ...r }))} travelers={travelers} tripId={trip.id} onChanged={vi.fn()} />);
+  const current = within(screen.getByRole("group", { name: `Current ${kind}s` }));
+  expect(current.getByText("NT$500")).toBeTruthy();
+  for (const amount of ["NT$300", "NT$400", "NT$100"]) expect(current.queryByText(amount)).toBeNull();
+  expect(current.queryByText("Active")).toBeNull();
+  const disclosure = screen.getByText(`Show ${kind} history (3)`).closest("details")!;
+  expect(disclosure.open).toBe(false);
+  fireEvent.click(current.getByRole("link", { name: "View edit history" }));
+  expect(disclosure.open).toBe(true);
+  const history = within(disclosure.querySelector(".expense-list")!);
+  expect(history.getByText("Reason: Duplicate")).toBeTruthy();
+  expect(history.getByRole("link", { name: `Replaced by another ${kind} · NT$500` }).getAttribute("href")).toBe(`#${kind}-latest`);
+  expect(history.getByRole("link", { name: `Replaces an earlier ${kind} · NT$300` }).getAttribute("href")).toBe(`#${kind}-earlier`);
+  expect(history.queryByRole("button")).toBeNull();
+  expect(await screen.findByRole("button", { name: "Edit" })).toBeTruthy();
+});
+
+it.each(["expense", "payment"] as const)("keeps %s trash actions accessible and requires confirmation with cancellation", async (kind) => {
+  if (kind === "expense") render(<ExpenseHistory expenses={[expense]} travelers={travelers} tripId={trip.id} onChanged={vi.fn()} />);
+  else render(<PaymentHistory payments={[payment]} travelers={travelers} tripId={trip.id} onChanged={vi.fn()} />);
+  const button = await screen.findByRole("button", { name: `Delete ${kind}` });
+  expect(button.textContent).toBe("");
+  expect(button.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
+  fireEvent.click(button);
+  expect(api.voidExpense).not.toHaveBeenCalled();
+  expect(api.voidSettlement).not.toHaveBeenCalled();
+  const confirmation = within(screen.getByRole("form", { name: `Delete ${kind}` }));
+  expect(confirmation.getByText("This keeps the original record in history but removes it from current balances.")).toBeTruthy();
+  fireEvent.click(confirmation.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("form", { name: `Delete ${kind}` })).toBeNull();
+  expect(api.voidExpense).not.toHaveBeenCalled();
+  expect(api.voidSettlement).not.toHaveBeenCalled();
+});
+
+it("moves the original expense to history after saving an edit and counts only current records", async () => {
+  mockDashboard();
+  const replacement = { ...expense, id: "expense-2", description: "Dinner updated", amount: 1200, replaces_id: expense.id };
+  const original = { ...expense, status: "voided" as const, replaced_by_id: replacement.id, void_reason: "Receipt" };
+  vi.mocked(api.listExpenses).mockResolvedValueOnce([expense]).mockResolvedValue([replacement, original]);
+  vi.mocked(api.correctExpense).mockResolvedValue(replacement);
+  render(<TripDashboard tripId={trip.id} />);
+  const region = within(await screen.findByRole("region", { name: "Current expenses" }));
+  fireEvent.click(await region.findByRole("button", { name: "Edit" }));
+  const editor = within(region.getByRole("group", { name: "Edit expense" }));
+  fireEvent.change(editor.getByLabelText("Description"), { target: { value: "Dinner updated" } });
+  fireEvent.change(editor.getByLabelText("Amount (NT$)"), { target: { value: "1200" } });
+  fireEvent.change(editor.getByLabelText("Reason"), { target: { value: "Receipt" } });
+  fireEvent.click(editor.getByRole("button", { name: "Save changes" }));
+  const current = within(region.getByRole("group", { name: "Current expenses" }));
+  expect(await current.findByRole("heading", { name: "Dinner updated" })).toBeTruthy();
+  expect(current.queryByRole("heading", { name: "Dinner" })).toBeNull();
+  expect(current.getByText("NT$1,200")).toBeTruthy();
+  expect(region.getByText("1", { selector: ".count" })).toBeTruthy();
+  fireEvent.click(region.getByText("Show expense history (1)"));
+  expect(region.getByRole("link", { name: "Replaced by another expense · NT$1,200" })).toBeTruthy();
 });
 
 it.each([
@@ -459,9 +526,9 @@ it.each([
   vi.mocked(method).mockRejectedValue(error);
   if (kind === "expense") render(<ExpenseHistory expenses={[expense]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
   else render(<PaymentHistory payments={[payment]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
-  fireEvent.click(await screen.findByRole("button", { name: operation === "void" ? "Void" : "Correct" }));
+  fireEvent.click(await screen.findByRole("button", { name: operation === "void" ? `Delete ${kind}` : "Edit" }));
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Fix" } });
-  fireEvent.click(await screen.findByRole("button", { name: operation === "void" ? `Confirm void ${kind}` : "Save correction" }));
+  fireEvent.click(await screen.findByRole("button", { name: operation === "void" ? `Confirm delete ${kind}` : "Save changes" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", error.message);
   expect(onChanged).not.toHaveBeenCalled();
 });
@@ -476,7 +543,7 @@ it.each(["expense", "payment"] as const)("preserves untouched %s timestamps incl
     render(<PaymentForm tripId={trip.id} travelers={travelers} initialPayment={{ ...payment, occurred_at }} onRecorded={vi.fn().mockResolvedValue(undefined)} />);
   }
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Description correction" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save correction" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(kind === "expense" ? api.correctExpense : api.correctSettlement).toHaveBeenCalledWith(trip.id, kind === "expense" ? expense.id : payment.id, "Description correction", expect.objectContaining({ occurred_at })));
 });
 
@@ -565,7 +632,7 @@ it("shows owner and guest roles and hides owner-only actions from normal members
   expect(region.getByText("Member")).toBeTruthy();
   expect(region.getByText("Guest")).toBeTruthy();
   expect(region.queryByRole("button", { name: "Add traveler" })).toBeNull();
-  expect(within(screen.getByRole("region", { name: "Expense history" })).queryByRole("button", { name: "Correct" })).toBeNull();
+  expect(within(screen.getByRole("region", { name: "Current expenses" })).queryByRole("button", { name: "Edit" })).toBeNull();
 });
 
 it("shows an accessible-operation permission error from the API", async () => {

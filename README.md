@@ -111,9 +111,10 @@ For database migration, transaction, and integration-test commands, see
 
 ## Browser smoke test
 
-Three Playwright Chromium flows cover registration, owner and guest travelers,
-expenses, recorded payments, corrections, logout/login, persisted history, and
-isolation between accounts. They use a separate local `*_e2e_test` database in the
+Four Playwright Chromium flows cover registration, owner and guest travelers,
+expenses, recorded payments, editing/deletion UX, persisted audit history,
+logout/login, Guest claiming, shared ledgers and isolation between accounts.
+They use a separate local `*_e2e_test` database in the
 Compose PostgreSQL instance; it refuses the normal development or integration-test
 database. The test writes real records, so use this dedicated database only for
 browser testing. With Compose running, from the repository root:
@@ -144,9 +145,11 @@ For the Vercel frontend, Render backend, and paid Render PostgreSQL deployment
 configuration and release checklist, see [production deployment](docs/deployment.md).
 
 
-Financial mistakes can be corrected from expense and payment history. Correct
-saves a complete replacement and voids the original atomically; Void removes its
-current balance effect while retaining history. Both require a reason. Historical
-records remain visible with status and replacement links. See
+Use **Edit** on current expenses/payments to save changes; the existing correction
+flow saves a replacement and voids the original atomically. The accessible trash
+icon opens a **Delete** confirmation, which removes the record's current balance
+effect while retaining history. Both require a reason. Current lists show only
+active records; expandable history shows previous/voided versions, reasons,
+timestamps and replacement links. **View edit history** opens the previous version. See
 [accounting policies](docs/accounting.md) and
 [correction APIs and migration notes](docs/persistence.md).

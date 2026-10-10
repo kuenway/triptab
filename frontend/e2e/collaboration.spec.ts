@@ -45,7 +45,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   await form.getByLabel("When did it happen?").fill("2026-10-11T12:00");
   for (const name of ["Alice", "Bob", "Charlie"]) await form.getByRole("checkbox", { name, exact: true }).check();
   await form.getByRole("button", { name: "Add expense" }).click();
-  await expect(page.getByRole("region", { name: "Expense history", exact: true })).toContainText("Bob's pre-invitation hotel");
+  await expect(page.getByRole("region", { name: "Current expenses", exact: true })).toContainText("Bob's pre-invitation hotel");
   const before = await (await page.request.get(`/api/v1/groups/${tripId}/expenses`)).json();
   const balances = page.getByRole("region", { name: "Balances", exact: true });
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$600");
@@ -103,7 +103,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await expense.getByLabel("When did it happen?").fill("2026-10-11T12:30");
     await expense.getByRole("checkbox", { name: "Alice", exact: true }).uncheck();
     await expense.getByRole("button", { name: "Add expense" }).click();
-    await expect(bob.getByRole("region", { name: "Expense history", exact: true })).toContainText("Bob records Charlie's taxi");
+    await expect(bob.getByRole("region", { name: "Current expenses", exact: true })).toContainText("Bob records Charlie's taxi");
     await page.reload();
     await expect(travelers.locator(".traveler-row").filter({ hasText: "Bob" })).toContainText("Member");
     await expect(travelers.locator(".traveler-row").filter({ hasText: "Bob" })).toHaveCount(1);
@@ -113,7 +113,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     const charlieRow = travelers.getByRole("group", { name: "Invitation for Charlie", exact: true });
     await expect(charlieRow.getByRole("button", { name: "Invite to TripTab" })).toBeVisible();
     expect(await charlieRow.evaluate((row) => row.scrollWidth <= row.clientWidth)).toBe(true);
-    await expect(page.getByRole("region", { name: "Expense history", exact: true })).toContainText("Bob records Charlie's taxi");
+    await expect(page.getByRole("region", { name: "Current expenses", exact: true })).toContainText("Bob records Charlie's taxi");
     await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$540");
     await expect(balances.locator(".balance-row").filter({ hasText: "Charlie" })).toContainText("owes NT$240");
     expect(requests.every((url) => !url.includes(parsed.hash.slice(7)))).toBe(true);
