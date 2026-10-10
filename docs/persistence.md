@@ -147,3 +147,18 @@ reviewed credentials and membership without changing historical actor IDs.
 Upgrade with the same `alembic upgrade head` command above. Downgrade to
 `20261003_0002` discards sessions, credentials, and roles while retaining financial
 history; perform it only on disposable databases.
+
+## Invitation migration (Milestone 12)
+
+Revision `20261011_0004` follows `20261003_0003`, adding only `trip_invitations`
+and its scoped lookup index. Unique token digests, composite trip/member foreign
+keys, actor foreign keys and lifecycle checks protect invitation metadata. Existing
+`(group_id, user_id)` membership uniqueness is retained. Claiming updates only the
+target account association plus invitation metadata in one transaction; no
+financial table or historical member ID changes.
+
+Local tests cover populated upgrade preserving old rows/credentials/sessions,
+Alembic drift check, disposable downgrade/upgrade, rollback and separate-connection
+PostgreSQL races. Downgrade removes invitation audit without unlinking members or
+rewriting financial data. Never run it on retained history. Production remains at
+M11 until the separately approved release. See [invitations](invitations.md).

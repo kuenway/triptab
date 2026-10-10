@@ -31,3 +31,10 @@ The initial deployment uses one backend worker. Releases migrate once before
 traffic; recovery uses native PostgreSQL backups into a separate database.
 Containers and hosting remain deferred. Financial, account and authorization
 semantics and all pushed migrations remain unchanged.
+
+Milestone 12 implements owner-issued invitations to claim existing Guest member
+identities. Tokens are 256-bit bearer secrets, persisted only as SHA-256 digests;
+links use URL fragments, with explicit authenticated acceptance. Target member row
+locks and existing membership uniqueness protect races. Accounting and financial
+identity/history do not change. Production release remains separately approved;
+see [invitation contracts](invitations.md).

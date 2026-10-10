@@ -37,3 +37,9 @@ application enforces membership and recording permissions before financial
 lookups and writes. Password hashes and login sessions are infrastructure, not
 financial domain fields. Safe User values never carry credentials. Actor IDs are
 trusted only when supplied by the canonical authenticated-user dependency.
+
+Invitation lifecycle and Guest account claiming belong to application/persistence,
+not accounting. Claiming changes only an existing GroupMember's nullable user
+association; its UUID, role and financial references remain stable. Owner permission,
+trip-scoped target, pending lifecycle and one-member-per-account checks are
+contextual and transactional. See [invitations](invitations.md).

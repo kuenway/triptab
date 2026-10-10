@@ -80,3 +80,21 @@ it("keeps an existing session's CSRF state when login credentials are wrong", as
     window.removeEventListener("triptab:auth-expired", expired);
   }
 });
+
+it("previews invitation tokens in the POST body without requiring authentication or CSRF", async () => {
+  const fetch=vi.fn().mockResolvedValueOnce(new Response(null,{status:204})).mockResolvedValueOnce(new Response(JSON.stringify({trip_name:"Japan",member_display_name:"Bob",expires_at:"2026-10-18T12:00:00Z"}),{status:200}));
+  vi.stubGlobal("fetch",fetch);await api.logout();
+  await api.previewInvitation("synthetic-invitation-token");
+  expect(fetch.mock.calls.map((call)=>call[0])).toEqual(["/api/v1/auth/logout","/api/v1/invitations/preview"]);
+  expect(fetch.mock.calls[1][1]).toMatchObject({method:"POST",body:JSON.stringify({token:"synthetic-invitation-token"}),cache:"no-store",headers:{"Content-Type":"application/json"}});
+});
+
+it.each(["create","accept","list","revoke"])("centralizes invitation %s requests and CSRF for mutations", async (operation) => {
+  const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({id:"inv"}),{status:200}));vi.stubGlobal("fetch",fetch);
+  if(operation==="create")await api.createInvitation("trip","bob");
+  if(operation==="accept")await api.acceptInvitation("synthetic-invitation-token");
+  if(operation==="list")await api.listInvitations("trip");
+  if(operation==="revoke")await api.revokeInvitation("trip","inv");
+  const [url,options]=fetch.mock.calls[0];expect(url).not.toContain("synthetic-invitation-token");expect(options.cache).toBe("no-store");
+  if(operation!=="list")expect(options.headers["X-CSRF-Token"]).toBe("csrf-test");
+});

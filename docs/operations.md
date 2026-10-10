@@ -201,6 +201,14 @@ validates mechanics, not a configured production backup schedule or recovery SLA
 - Validate a restore and compare history; document who performs recovery.
 
 Application containers, distributed limiting, cleanup workers, monitoring
-SaaS, strict-script CSP, reset/verification/OAuth, invitations, idempotency, ledger
+SaaS, strict-script CSP, reset/verification/OAuth, idempotency, ledger
 versions and multi-currency remain deferred. Reassess dependency advisories at
 deployment; a vulnerability scan is not a security guarantee.
+
+## Milestone 12 release boundary
+
+[Trip invitations](invitations.md) add migration `20261011_0004`; deployed revisions
+0001–0003 remain unchanged. M12 development/verification uses local Compose only.
+Do not run the new revision on Neon or change Render/Vercel until review, push,
+green CI and explicit production migration approval. The existing manual migration
+before deployment sequence and all production security/configuration remain.

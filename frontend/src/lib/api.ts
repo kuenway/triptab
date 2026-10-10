@@ -27,6 +27,26 @@ export type Traveler = {
   role: "owner" | "member";
 };
 
+export type TripInvitation = {
+  id: string;
+  group_id: string;
+  target_member_id: string;
+  created_by_user_id: string;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  accepted_by_user_id: string | null;
+  revoked_at: string | null;
+  revoked_by_user_id: string | null;
+  status: "pending" | "accepted" | "revoked" | "expired";
+};
+export type InvitationPreview = { trip_name: string; member_display_name: string; expires_at: string };
+
+export function invitationToken(hash: string): string | null {
+  const token = new URLSearchParams(hash.replace(/^#/, "")).get("token");
+  return token && /^[A-Za-z0-9_-]{43}$/.test(token) ? token : null;
+}
+
 export type ExpenseSplit = { member_id: string; amount: number };
 
 export type Expense = FinancialAudit & {
@@ -96,14 +116,14 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, body?: object): Promise<T> {
-  const publicAuth = path === "/auth/login" || path === "/auth/register";
-  if (body && !publicAuth && !csrfToken) await api.getMe();
+  const publicRequest = path === "/auth/login" || path === "/auth/register" || path === "/invitations/preview";
+  if (body && !publicRequest && !csrfToken) await api.getMe();
   let response: Response;
   try {
     response = await fetch(`/api/v1${path}`, {
       method: body ? "POST" : "GET",
       credentials: "same-origin",
-      headers: body ? { "Content-Type": "application/json", ...(!publicAuth && csrfToken ? { "X-CSRF-Token": csrfToken } : {}) } : undefined,
+      headers: body ? { "Content-Type": "application/json", ...(!publicRequest && csrfToken ? { "X-CSRF-Token": csrfToken } : {}) } : undefined,
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",
     });
@@ -111,7 +131,7 @@ async function request<T>(path: string, body?: object): Promise<T> {
     throw new ApiError("Could not reach TripTab. Check that the backend is running.", 0);
   }
   if (!response.ok) {
-    if (response.status === 401 && !publicAuth) {
+    if (response.status === 401 && !publicRequest) {
       csrfToken = null;
       if (typeof window !== "undefined") window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     }
@@ -146,6 +166,13 @@ export const api = {
   listTravelers: (id: string) => request<Traveler[]>(`/groups/${id}/members`),
   addTraveler: (id: string, display_name: string) =>
     request<Traveler>(`/groups/${id}/members`, { display_name }),
+  createInvitation: (id: string, memberId: string) =>
+    request<TripInvitation & { token: string }>(`/groups/${id}/members/${memberId}/invitations`, {}),
+  listInvitations: (id: string) => request<TripInvitation[]>(`/groups/${id}/invitations`),
+  revokeInvitation: (id: string, invitationId: string) =>
+    request<TripInvitation>(`/groups/${id}/invitations/${invitationId}/revoke`, {}),
+  previewInvitation: (token: string) => request<InvitationPreview>("/invitations/preview", { token }),
+  acceptInvitation: (token: string) => request<Traveler>("/invitations/accept", { token }),
   listExpenses: (id: string) => request<Expense[]>(`/groups/${id}/expenses`),
   addExpense: (id: string, expense: ExpenseInput) =>
     request<Expense>(`/groups/${id}/expenses`, expense),

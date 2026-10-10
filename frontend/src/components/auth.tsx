@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, FormEvent, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 
-import { api, ApiError, AUTH_EXPIRED_EVENT, AuthState, CurrentUser } from "../lib/api";
+import { api, ApiError, AUTH_EXPIRED_EVENT, AuthState, CurrentUser, invitationToken } from "../lib/api";
 
 type Authentication = {
   user: CurrentUser | null;
@@ -83,6 +83,8 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const [saving, setSaving] = useState(false);
   const pending = useRef(false);
   const registering = mode === "register";
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  useEffect(() => { void Promise.resolve().then(() => setInviteToken(invitationToken(window.location.hash))); }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -94,7 +96,11 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       const state = registering ? await api.register(email.trim(), password, name.trim()) : await api.login(email.trim(), password);
       auth.signedIn(state);
       setPassword("");
-      router.push("/");
+      const token = invitationToken(window.location.hash);
+      if (token) {
+        window.history.replaceState(null, "", window.location.pathname);
+        router.replace(`/invite#token=${encodeURIComponent(token)}`);
+      } else router.push("/");
     } catch (cause) {
       setPassword("");
       setError((cause as Error).message);
@@ -117,7 +123,8 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         {error ? <p role="alert" className="alert">{error}</p> : null}
         <button disabled={saving || auth.loading} type="submit">{saving ? "Please wait…" : registering ? "Register" : "Log in"}</button>
       </form>
-      <p>{registering ? "Already have an account? " : "New to TripTab? "}<Link href={registering ? "/login" : "/register"}>{registering ? "Log in" : "Create an account"}</Link></p>
+      <p>{registering ? "Already have an account? " : "New to TripTab? "}<Link replace={Boolean(inviteToken)} href={`${registering ? "/login" : "/register"}${inviteToken ? `#token=${encodeURIComponent(inviteToken)}` : ""}`}>{registering ? "Log in" : "Create an account"}</Link></p>
+      {inviteToken ? <p><Link replace href="/invite">Cancel invitation</Link></p> : null}
     </section>
   </main>;
 }

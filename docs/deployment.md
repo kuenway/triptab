@@ -251,7 +251,7 @@ suspend for unusually high outbound traffic to external databases. Observe free
 bandwidth/build quotas and disable paid overages; Vercel Hobby is for personal,
 noncommercial use and pauses features at limits. Restarts reset local rate-limit
 counts but preserve database-backed sessions. Session cleanup, distributed
-limiting, invitations, reset/verification/OAuth, multi-currency, OCR, recurring
+limiting, reset/verification/OAuth, multi-currency, OCR, recurring
 expenses, analytics, idempotency, ledger versioning and payment integration remain
 deferred. Development-only npm advisories acknowledged in M10 are not resolved
 by this deployment; no breaking dependency changes or audit fixes are introduced.
@@ -264,3 +264,11 @@ Provider references: [Render Blueprint schema](https://render.com/docs/blueprint
 [Vercel external rewrite cache changes](https://vercel.com/changelog/vercels-cdn-now-respects-cache-control-headers-from-external-origins-by-default),
 [cache header priority](https://vercel.com/docs/caching/cache-control-headers), and
 [manual Git deployment configuration](https://vercel.com/docs/project-configuration/git-configuration).
+
+## Pending Milestone 12
+
+[Collaborative invitations](invitations.md) are implemented locally with additive
+revision `20261011_0004`, but the deployed M11 baseline and head `20261003_0003`
+remain unchanged. No M12 production resources, data or configuration are changed.
+Release only after review, push, green CI and explicit production migration
+approval, then manual Render/Vercel release; automatic deployment stays disabled.

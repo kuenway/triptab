@@ -1,6 +1,6 @@
 """SQLAlchemy storage representations; domain behavior lives elsewhere."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import (
@@ -326,3 +326,68 @@ class AuthSessionRow(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class TripInvitationRow(Base):
+    """Account claiming permission; never contains the raw bearer token."""
+
+    __tablename__ = "trip_invitations"
+    __table_args__ = (
+        UniqueConstraint("token_hash"),
+        ForeignKeyConstraint(
+            ["group_id", "target_member_id"],
+            ["group_members.group_id", "group_members.id"],
+            name="fk_trip_invitations_group_target_member",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_sha256"),
+        CheckConstraint("expires_at > created_at", name="expiration_after_creation"),
+        CheckConstraint(
+            "(accepted_at IS NULL) = (accepted_by_user_id IS NULL)",
+            name="accepted_metadata",
+        ),
+        CheckConstraint(
+            "(revoked_at IS NULL) = (revoked_by_user_id IS NULL)",
+            name="revoked_metadata",
+        ),
+        CheckConstraint(
+            "accepted_at IS NULL OR revoked_at IS NULL", name="one_terminal_state"
+        ),
+        CheckConstraint(
+            "accepted_at IS NULL OR "
+            "(accepted_at >= created_at AND accepted_at < expires_at)",
+            name="accepted_time",
+        ),
+        CheckConstraint(
+            "revoked_at IS NULL OR revoked_at >= created_at", name="revoked_time"
+        ),
+        Index("ix_trip_invitations_group_target", "group_id", "target_member_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    group_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("groups.id", ondelete="RESTRICT")
+    )
+    target_member_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True))
+    token_hash: Mapped[str] = mapped_column(String(64))
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_by_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_by_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+
+    @property
+    def status(self) -> str:
+        if self.accepted_at is not None:
+            return "accepted"
+        if self.revoked_at is not None:
+            return "revoked"
+        return "expired" if self.expires_at <= datetime.now(UTC) else "pending"

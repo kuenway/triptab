@@ -3,7 +3,8 @@
 TripTab uses first-party email/password accounts and opaque PostgreSQL sessions.
 All financial product routes under `/api/v1/groups` require authentication.
 `/health`, registration, and login are public; public authentication POSTs still
-require an allowed Origin. There is no public deployment in this milestone.
+require an allowed Origin. Production was deployed in M11; M12 invitations await
+a separately approved release.
 
 ## Accounts and passwords
 
@@ -91,8 +92,9 @@ in or gain access by knowing a trip UUID. Guests default to `member` role.
 A partial unique index permits at most one owner per group; a check requires the
 owner to be account-linked. The application creates an owner for every new trip.
 Legacy groups may have no owner. Normal account-linked memberships have `member`
-role. M9 intentionally offers only owner-account creation and adding guests;
-inviting/linking additional registered accounts has no public endpoint. Tests
+role. M9 intentionally offered only owner-account creation and adding guests;
+inviting/linking additional registered accounts had no public endpoint then. M12
+adds [explicit Guest invitation claiming](invitations.md). Tests
 establish registered member fixtures explicitly to verify their permissions.
 
 | Operation | Allowed |
@@ -100,6 +102,8 @@ establish registered member fixtures explicitly to verify their permissions.
 | List trips | Only current User's account-linked trips |
 | Read trip, members, expenses, payments, balances, suggestions, audit history | Account-linked members of that trip |
 | Add guests | Owner |
+| Create/list/revoke Guest invitations | Owner |
+| Claim an invited Guest | Authenticated User with valid token, CSRF and Origin; no existing trip membership |
 | Create expense | Any account-linked member |
 | Record payment | Owner, linked sender, or linked recipient |
 | Void/correct expense or payment | Original recording author or owner |
@@ -138,7 +142,8 @@ trips without account-linked access remain inaccessible to newly registered user
 For expendable local data, recreate the development database and migrate afresh;
 for history you need, explicitly review and manually establish the correct account
 membership/owner and credentials. Do not rewrite historical financial actor IDs.
-There is no automatic guest claiming or group-claim endpoint.
+There is no automatic legacy ownership or group claiming. M12 permits explicit
+owner-issued invitation claims for existing Guests only.
 
 Downgrade to M8 is for disposable databases only: it discards password hashes,
 sessions, and roles while retaining financial history and user IDs. It is not a

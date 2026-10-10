@@ -169,3 +169,11 @@ suggestions from the API. The frontend does no balance arithmetic.
 
 All six creation/void/correction operations use the authenticated User as actor.
 Original history keeps its original actor ID even when corrected by an owner.
+
+## Collaborative account claiming
+
+Claiming a Guest links an account to the existing GroupMember UUID. It changes no
+expense, split, settlement, void/replacement reference or accounting input identity.
+Balances and suggestions immediately before/after claiming are identical. The
+newly linked account uses normal Member permissions; its later records carry its
+User as recording actor independently of which traveler paid. See [invitations](invitations.md).

@@ -11,12 +11,14 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.accounting import AccountingValidationError
 from app.api.auth import router as auth_router
 from app.api.dependencies import _session_factory, get_engine
+from app.api.invitations import router as invitation_router
 from app.api.routes import router
 from app.application.auth import (
     AccountConflict,
     AuthenticationRequired,
     PermissionDenied,
 )
+from app.application.invitations import InvitationConflict
 from app.application.service import FinancialConflict, ResourceNotFound
 from app.config import get_settings
 from app.domain import DomainValidationError
@@ -33,6 +35,7 @@ CLIENT_ERRORS = {
     AccountConflict: (409, "account_conflict"),
     ResourceNotFound: (404, "resource_not_found"),
     FinancialConflict: (409, "financial_conflict"),
+    InvitationConflict: (409, "invitation_conflict"),
     DomainValidationError: (422, "domain_validation"),
     AccountingValidationError: (422, "accounting_validation"),
 }
@@ -104,6 +107,7 @@ def create_app() -> FastAPI:
     app.add_middleware(OperationsMiddleware)
     app.include_router(router)
     app.include_router(auth_router)
+    app.include_router(invitation_router)
     for error in CLIENT_ERRORS:
         app.add_exception_handler(error, client_error)
     app.add_exception_handler(RequestValidationError, safe_validation_errors)

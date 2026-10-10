@@ -43,6 +43,7 @@ beforeEach(() => {
   vi.mocked(api.logout).mockResolvedValue(undefined);
   vi.mocked(api.getSettlementSuggestions).mockResolvedValue({ group_id: trip.id, currency: "TWD", suggestions: [] });
   vi.mocked(api.listSettlements).mockResolvedValue([]);
+  vi.mocked(api.listInvitations).mockResolvedValue([]);
 });
 
 it("renders trips from the API", async () => {

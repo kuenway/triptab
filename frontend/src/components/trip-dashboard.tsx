@@ -9,6 +9,7 @@ import { PaymentForm, PaymentHistory, SuggestedPayments } from "./payments";
 import { AuditDetails, FinancialActions, localDateTime } from "./financial-history";
 
 import { AccountMenu, useAuth } from "./auth";
+import { TravelerInvitations } from "./invitations";
 
 const money = (amount: number) => `NT$${new Intl.NumberFormat("en-US").format(amount)}`;
 
@@ -279,7 +280,7 @@ export function TripDashboard({ tripId }: { tripId: string }) {
         <div className="dashboard-side">
           <section className="panel" aria-labelledby="balances-heading"><div className="section-heading"><h2 id="balances-heading">Balances</h2></div><p className="muted section-caption">Who should receive and who owes.</p>{balances ? <BalanceList balances={balances} /> : <p className="muted">Loading balances…</p>}</section>
           <section className="panel" aria-labelledby="suggested-payments-heading"><div className="section-heading"><h2 id="suggested-payments-heading">Suggested payments</h2></div><p className="muted section-caption">Mark as paid only after a payment happened outside TripTab.</p>{suggestionsError ? <p className="alert" role="alert">{suggestionsError}</p> : suggestions ? <SuggestedPayments tripId={tripId} travelers={travelers} suggestions={suggestions} onRecorded={load} /> : <p className="muted" role="status">Loading suggested payments…</p>}</section>
-          <section className="panel" aria-labelledby="travelers-heading"><div className="section-heading"><h2 id="travelers-heading">Travelers</h2><span className="count">{travelers.length}</span></div>{travelers.length === 0 ? <p className="muted">No travelers yet. Add the people sharing this trip.</p> : <div className="traveler-list">{travelers.map((traveler) => <div className="traveler-row" key={traveler.id}><span className="person-dot" aria-hidden="true">{traveler.display_name.charAt(0).toUpperCase()}</span>{traveler.display_name} <span className="strategy-pill">{traveler.role === "owner" ? "Owner" : traveler.user_id ? "Member" : "Guest"}</span></div>)}</div>}{owner ? <TravelerForm tripId={tripId} onAdded={() => void load()} /> : null}</section>
+          <section className="panel" aria-labelledby="travelers-heading"><div className="section-heading"><h2 id="travelers-heading">Travelers</h2><span className="count">{travelers.length}</span></div>{travelers.length === 0 ? <p className="muted">No travelers yet. Add the people sharing this trip.</p> : <div className="traveler-list">{travelers.map((traveler) => <div className="traveler-row" key={traveler.id}><span className="person-dot" aria-hidden="true">{traveler.display_name.charAt(0).toUpperCase()}</span>{traveler.display_name} <span className="strategy-pill">{traveler.role === "owner" ? "Owner" : traveler.user_id ? "Member" : "Guest"}</span></div>)}</div>}{owner ? <><TravelerForm tripId={tripId} onAdded={() => void load()} /><TravelerInvitations tripId={tripId} travelers={travelers} /></> : null}</section>
         </div>
       </div>
       <p className="dev-note">Private trip · Financial history is preserved</p>
