@@ -2,7 +2,7 @@
 
 TripTab is a local travel-expense app for trusted groups. The frontend supports
 trips, travelers, Equal and Exact expenses, history, derived balances, and suggested
-payments, payment recording, and payment history. The FastAPI backend stores
+transfers, settlement confirmation, and immutable payment history. The FastAPI backend stores
 financial history in PostgreSQL and owns the accounting.
 
 ## Requirements
@@ -67,8 +67,8 @@ See [local naming transition](docs/persistence.md#triptab-local-naming-and-prese
 before starting Compose if an older container already owns port 5433.
 
 In the browser, create a trip, open **Travelers** to add guests, then return to
-**Expenses** to record an Equal or Exact expense. Open **Balances** to view net
-balances, suggested payments, payment recording, and current payments.
+**Expenses** to record an Equal or Exact expense. Open **Balances** to view
+your net position, traveler balances, and suggested external transfers.
 Fresh Equal expenses
 select all current travelers and default Paid by to your
 linked traveler. You can change the payer or uncheck participants; edits persist
@@ -76,13 +76,15 @@ through ordinary form changes. Switching Exact to Equal initializes all traveler
 and saving starts a fresh default form. Corrections retain the original payer and
 splits. The payer can be outside the split. Monetary amounts are whole NTD;
 currency is always TWD.
-The trip's **Suggested payments** section proposes transfers to settle those
-balances. Choose **Mark as paid** only after a transfer happened outside TripTab,
-check the sender, recipient, amount, and payment time, then choose **Record payment**.
-TripTab records the payment; it does not transfer money. The separate **Record
-payment** form accepts custom amounts, including partial payments and overpayments.
-Recorded payments appear in **Payment history**, and balances and suggestions
-refresh from the backend. Suggestions themselves remain unpersisted.
+The **Suggested transfers** section proposes transfers to settle those balances.
+Choose **Mark settled** only after money moved outside TripTab; the confirmation
+identifies sender, recipient, and exact amount and states that TripTab does not
+transfer money. **Confirm settled** uses a dedicated atomic command that checks
+whether this exact suggestion is still current. A stale suggestion returns 409,
+refreshes balances/suggestions, and asks you to review rather than retrying.
+The normal Balances page has no arbitrary **Record payment** form. The generic
+Settlement API still supports partial payments and overpayments; existing payment
+editing/voiding remains available in **History**. Suggestions are never persisted.
 
 ## Trip navigation
 
@@ -94,12 +96,13 @@ the selected section:
 | Route | Section |
 | --- | --- |
 | `/trips/{id}` | Expenses; canonical Trip and invitation-acceptance destination |
-| `/trips/{id}/balances` | Balances, suggestions, and payment recording/history |
+| `/trips/{id}/balances` | Personal/traveler net balances and suggested-transfer confirmation |
 | `/trips/{id}/travelers` | Travelers and Owner-only invitation/removal management |
-| `/trips/{id}/history` | Read-only existing expense/payment lists and audit details |
+| `/trips/{id}/history` | Existing expense/payment history, audit details, and current payment correction/void controls |
 
-Expense/payment edit and void controls stay in their original functional sections,
-including expandable history and version links. History reuses that presentation;
+Expense edit/void controls stay in Expenses; current payment edit/void controls
+are in History, retaining expandable immutable history and version links. History
+reuses the existing presentation;
 it is not a new activity timeline. Expense entry and editing reuse one form in a responsive dialog: a bottom sheet
 on mobile and a centered dialog on desktop. This does not change accounting,
 permissions, or API contracts.
@@ -151,7 +154,7 @@ For database migration, transaction, and integration-test commands, see
 ## Browser smoke test
 
 Playwright Chromium flows cover registration, owner and guest travelers,
-expenses, recorded payments, editing/deletion UX, persisted audit history,
+expenses, current/stale settlement confirmation, editing/deletion UX, persisted audit history,
 logout/login, Guest claiming, shared ledgers, isolation between accounts, and
 Trip section navigation across reloads, browser history, and mobile/desktop layouts.
 They use a separate local `*_e2e_test` database in the

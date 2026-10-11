@@ -128,6 +128,35 @@ This targeted CSP protects embedding/navigation without breaking Next.js inline
 hydration; it is **not** a strict script/XSS CSP. Nonce-based dynamic rendering is
 deferred. See [Next.js CSP guidance](https://nextjs.org/docs/app/guides/content-security-policy).
 
+## Financial mutation serialization (M17C)
+
+Expense create/correct/void, generic Settlement create/correct/void, and current
+suggestion confirmation share one per-Trip Group row `FOR NO KEY UPDATE` lock in
+`_financial_transaction(group_id)`. Acquire it before loading effective financial
+state or mutating child rows and retain it through commit/rollback. Future
+balance-affecting application writes must use that same wrapper. Repository
+helpers flush without committing; direct operational financial writes would bypass
+this contract and are unsupported.
+
+Use the PostgreSQL default READ COMMITTED isolation: once a waiting writer obtains
+the lock, subsequent effective-history queries see prior commits. Do not change
+transaction isolation without revisiting revalidation behavior. NO KEY UPDATE
+serializes financial writers but permits FK key-share acquisition by the existing
+member/invitation transactions, preserving their member-first lock order.
+
+The dedicated `POST /api/v1/groups/{group_id}/settlement-suggestions/confirm`
+returns 409 without writing when the exact tuple is no longer current. Generic
+`POST .../settlements` intentionally permits arbitrary actual transfers, including
+partial and overpayments; it does not validate a suggestion. See [accounting/API
+contracts](accounting.md#confirming-a-current-suggestion-m17c).
+
+M17C adds no schema revision; head remains `20261011_0005`. No production operation
+is part of its implementation. After review/push/green CI, a separately approved
+release must deploy the backend confirmation command before the new frontend uses
+it. No M17C migration is required. PostgreSQL 18 tests exercise simultaneous
+confirmation, all six other mutations in both acquisition orders, and FK lock
+compatibility. The existing timeout/uncertain-write guidance still applies.
+
 ## Authentication limits and retention
 
 Login and registration share a locked, process-local fixed-window counter, per IP

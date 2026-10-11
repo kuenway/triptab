@@ -181,6 +181,8 @@ export const api = {
   getBalances: (id: string) => request<Balances>(`/groups/${id}/balances`),
   getSettlementSuggestions: (id: string) =>
     request<SettlementSuggestions>(`/groups/${id}/settlement-suggestions`),
+  confirmSettlementSuggestion: (id: string, suggestion: Pick<SettlementInput, "from_member_id" | "to_member_id" | "amount">) =>
+    request<Settlement>(`/groups/${id}/settlement-suggestions/confirm`, suggestion),
   recordSettlement: (id: string, payment: SettlementInput) =>
     request<Settlement>(`/groups/${id}/settlements`, payment),
   voidExpense: (id: string, expenseId: string, reason: string) =>

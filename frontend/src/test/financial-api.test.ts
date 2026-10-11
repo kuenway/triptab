@@ -105,3 +105,15 @@ it("deletes a Guest with CSRF, same-origin credentials, no-store and an empty 20
   await expect(api.removeTraveler("trip", "guest")).resolves.toBeUndefined();
   expect(fetch).toHaveBeenCalledWith("/api/v1/groups/trip/members/guest", expect.objectContaining({ method: "DELETE", credentials: "same-origin", headers: { "X-CSRF-Token": "csrf-test" }, cache: "no-store", body: undefined }));
 });
+
+
+it("confirms an exact suggestion with CSRF through the dedicated no-store endpoint", async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "settlement" }), { status: 201 }));
+  vi.stubGlobal("fetch", fetch);
+  const input = { from_member_id: "bob", to_member_id: "alice", amount: 300 };
+  await api.confirmSettlementSuggestion("trip", input);
+  expect(fetch).toHaveBeenCalledExactlyOnceWith("/api/v1/groups/trip/settlement-suggestions/confirm", expect.objectContaining({
+    method: "POST", body: JSON.stringify(input), credentials: "same-origin", cache: "no-store",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": "csrf-test" },
+  }));
+});

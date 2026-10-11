@@ -219,3 +219,38 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .ledger-row-controls:has(.confirmation-panel) { flex-wrap: wrap; }
   .ledger-row-controls:has(.confirmation-panel) > .audit-actions { flex-basis: 100%; }
 }
+
+/* Balances describe net positions; confirmation records an external transfer. */
+.balance-workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: start; }
+.balance-workspace h2 { margin-bottom: 20px; }
+.balance-personal { padding: 0 0 24px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+.balance-personal h3 { font-size: .875rem; color: var(--muted); margin-bottom: 12px; }
+.balance-personal p { margin: 0; font-weight: 600; }
+.balance-personal strong { display: block; font-size: 1.75rem; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.balance-overview > h3 { font-size: 1rem; margin-bottom: 8px; }
+.balance-caption { font-size: .875rem; margin: 0 0 16px; }
+.net-balance-list .balance-row { align-items: start; gap: 16px; }
+.net-balance-list .person-name { min-width: 0; overflow-wrap: anywhere; }
+.net-balance-list .balance-value { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.transfer-row { padding: 18px 0; }
+.transfer-topline { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: start; }
+.transfer-topline h3 { font-size: 1rem; margin: 0; overflow-wrap: anywhere; }
+.transfer-topline strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.transfer-row .payment-button { display: block; margin: 12px 0 0 auto; min-height: 44px; }
+.balance-workspace button:focus-visible, .settlement-dialog button:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+.settlement-history-link { display: inline-block; margin-top: 24px; font-size: .875rem; color: var(--teal-dark); }
+.settlement-status { padding: 12px 0; margin: 0 0 16px; font-weight: 600; }
+.settlement-dialog { width: min(480px, calc(100% - 32px)); }
+.settlement-confirmation-body { padding: 24px; overflow-y: auto; }
+.settlement-confirmation-body h2 { font-size: 1.25rem; }
+.settlement-confirmation-body p { overflow-wrap: anywhere; }
+.settlement-confirmation-actions { padding: 16px 24px; border-top: 1px solid var(--line); background: white; justify-content: flex-end; flex-shrink: 0; }
+.settlement-confirmation-actions button { min-height: 44px; border: 1px solid var(--line); border-radius: 9px; padding: 10px 16px; font-weight: 700; background: white; color: var(--teal-dark); }
+.settlement-confirmation-actions button:last-child { background: var(--teal); color: white; border-color: var(--teal); }
+@media (max-width: 800px) {
+  .balance-workspace { grid-template-columns: 1fr; gap: 32px; }
+  .suggested-transfers { border-top: 1px solid var(--line); padding-top: 24px; }
+  .settlement-dialog { width: 100%; }
+  .net-balance-list .balance-row { display: grid; grid-template-columns: 1fr; gap: 4px; }
+  .net-balance-list .balance-value { text-align: left; }
+}

@@ -41,7 +41,7 @@ beforeEach(() => {
 
 it.each([
   ["", "Expenses", ExpensesPage, ["Expenses"]],
-  ["/balances", "Balances", BalancesPage, ["Balances", "Suggested payments", "Record payment", "Current payments"]],
+  ["/balances", "Balances", BalancesPage, ["Balances", "Your balance", "Traveler balances", "Suggested transfers"]],
   ["/travelers", "Travelers", TravelersPage, ["Travelers"]],
   ["/history", "History", HistoryPage, ["History", "Expense history", "Payment history"]],
 ] as const)("renders only the requested section at /trips/trip%s", async (suffix, active, Page, headings) => {
@@ -56,7 +56,7 @@ it.each([
     expect(nav.getByRole("link", { name })).toHaveProperty("href", "http://localhost:3000/trips/trip" + path);
   }
   expect(screen.queryByRole("tab")).toBeNull();
-  for (const name of ["Expenses", "Add an expense", "Current expenses", "Balances", "Suggested payments", "Record payment", "Current payments", "Travelers", "History", "Expense history", "Payment history"]) {
+  for (const name of ["Expenses", "Add an expense", "Current expenses", "Balances", "Your balance", "Traveler balances", "Suggested transfers", "Suggested payments", "Record payment", "Current payments", "Travelers", "History", "Expense history", "Payment history"]) {
     expect(screen.queryAllByRole("heading", { name })).toHaveLength(headings.some((heading) => heading === name) ? 1 : 0);
   }
   expect(screen.getAllByRole("main")).toHaveLength(1);
@@ -134,7 +134,7 @@ it("does not expose inaccessible Trip content on a section URL", async () => {
 });
 
 
-it("reuses current records and immutable history read-only on the History route", async () => {
+it("reuses immutable expense history and settlement controls on the History route", async () => {
   const expense = { id: "original", group_id: trip.id, description: "Dinner", amount: 900, payer_member_id: "alice", split_strategy: "equal" as const, splits: [{ member_id: "alice", amount: 900 }], occurred_at: "2026-10-11T12:00:00Z", created_at: "2026-10-11T12:01:00Z", created_by_user_id: auth.user.id, status: "voided" as const, void_reason: "Receipt correction", replaced_by_id: "replacement" };
   vi.mocked(api.listExpenses).mockResolvedValue([expense, { ...expense, id: "replacement", description: "Updated dinner", amount: 990, status: "active", replaces_id: expense.id, replaced_by_id: null }]);
   vi.mocked(api.listSettlements).mockResolvedValue([{ id: "payment", group_id: trip.id, from_member_id: "bob", to_member_id: "alice", from_display_name: "Bob", to_display_name: "Alice", amount: 300, occurred_at: expense.occurred_at, created_at: expense.created_at, created_by_user_id: auth.user.id, status: "active" }]);
@@ -145,7 +145,8 @@ it("reuses current records and immutable history read-only on the History route"
   expect(screen.getByRole("heading", { name: "Dinner" })).toBeTruthy();
   expect(screen.getByText("Reason: Receipt correction")).toBeTruthy();
   expect(screen.getByRole("link", { name: "Replaced by another expense · NT$990" })).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Bob paid Alice" })).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  expect(screen.getByRole("heading", { name: "Bob settled with Alice" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Delete payment" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Delete expense" })).toBeNull();
 });

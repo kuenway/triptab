@@ -21,6 +21,7 @@ from app.api.schemas import (
     SettlementCorrection,
     SettlementCreate,
     SettlementResponse,
+    SettlementSuggestionConfirm,
     SettlementSuggestionResponse,
     SettlementSuggestionsResponse,
     VoidRequest,
@@ -185,6 +186,24 @@ def get_settlement_suggestions(
             for suggestion in suggestions
         ],
     )
+
+
+@router.post(
+    "/groups/{group_id}/settlement-suggestions/confirm",
+    response_model=SettlementResponse,
+    status_code=201,
+    tags=["settlement-suggestions"],
+)
+def confirm_settlement_suggestion(
+    group_id: UUID, request: SettlementSuggestionConfirm, service: ServiceDependency
+) -> SettlementResponse:
+    settlement = service.confirm_settlement_suggestion(
+        group_id, request.from_member_id, request.to_member_id, request.amount
+    )
+    names = {
+        member.id: member.display_name for member in service.list_members(group_id)
+    }
+    return SettlementResponse.from_domain(settlement, names)
 
 
 @router.post(

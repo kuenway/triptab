@@ -38,7 +38,7 @@ class ResourceNotFound(Exception):
 
 
 class FinancialConflict(Exception):
-    """A financial record was already voided or corrected."""
+    """A financial record or derived suggestion is no longer current."""
 
 
 class MemberRemovalConflict(Exception):
@@ -224,7 +224,7 @@ class TripTabService:
         participant_member_ids: tuple[UUID, ...] | None = None,
         splits: tuple[ExpenseSplit, ...] | None = None,
     ) -> Expense:
-        with self.session.begin():
+        with self._financial_transaction(group_id):
             return self._create_expense(
                 group_id,
                 description,
@@ -323,19 +323,14 @@ class TripTabService:
         amount: int,
         occurred_at: datetime,
     ) -> Settlement:
-        with self.session.begin():
+        with self._financial_transaction(group_id):
             return self._record_settlement(
                 group_id, from_member_id, to_member_id, amount, occurred_at
             )
 
-    def _record_settlement(
-        self,
-        group_id: UUID,
-        from_member_id: UUID,
-        to_member_id: UUID,
-        amount: int,
-        occurred_at: datetime,
-    ) -> Settlement:
+    def _require_settlement_participants(
+        self, group_id: UUID, from_member_id: UUID, to_member_id: UUID
+    ) -> None:
         self._group(group_id)
         member_ids = {member.id for member in self.repo.list_members(group_id)}
         if from_member_id not in member_ids:
@@ -350,6 +345,47 @@ class TripTabService:
             raise PermissionDenied(
                 "only sender, recipient, or group owner may record a payment"
             )
+
+    def confirm_settlement_suggestion(
+        self, group_id: UUID, from_member_id: UUID, to_member_id: UUID, amount: int
+    ) -> Settlement:
+        with self._financial_transaction(group_id):
+            self._require_settlement_participants(
+                group_id, from_member_id, to_member_id
+            )
+            _, _, suggestions = self.get_settlement_suggestions(group_id)
+            match = next(
+                (
+                    suggestion
+                    for suggestion in suggestions
+                    if (
+                        suggestion.from_member_id,
+                        suggestion.to_member_id,
+                        suggestion.amount,
+                    )
+                    == (from_member_id, to_member_id, amount)
+                ),
+                None,
+            )
+            if match is None:
+                raise FinancialConflict("settlement suggestion has changed")
+            return self._record_settlement(
+                group_id,
+                match.from_member_id,
+                match.to_member_id,
+                match.amount,
+                datetime.now(UTC),
+            )
+
+    def _record_settlement(
+        self,
+        group_id: UUID,
+        from_member_id: UUID,
+        to_member_id: UUID,
+        amount: int,
+        occurred_at: datetime,
+    ) -> Settlement:
+        self._require_settlement_participants(group_id, from_member_id, to_member_id)
         settlement = Settlement(
             id=uuid4(),
             group_id=group_id,
@@ -394,7 +430,7 @@ class TripTabService:
         participant_member_ids: tuple[UUID, ...] | None = None,
         splits: tuple[ExpenseSplit, ...] | None = None,
     ) -> Expense:
-        with self._financial_transaction():
+        with self._financial_transaction(group_id):
             self._active_expense(group_id, target_id)
             replacement = self._create_expense(
                 group_id,
@@ -428,7 +464,7 @@ class TripTabService:
         amount: int,
         occurred_at: datetime,
     ) -> Settlement:
-        with self._financial_transaction():
+        with self._financial_transaction(group_id):
             self._active_settlement(group_id, target_id)
             replacement = self._record_settlement(
                 group_id, from_member_id, to_member_id, amount, occurred_at
@@ -446,9 +482,11 @@ class TripTabService:
             return replacement
 
     @contextmanager
-    def _financial_transaction(self) -> Iterator[None]:
+    def _financial_transaction(self, group_id: UUID) -> Iterator[None]:
         try:
             with self.session.begin():
+                self._group(group_id)
+                self.repo.lock_group_finances(group_id)
                 yield
         except IntegrityError as error:
             # A competing void/correction may win after our active-state check.
@@ -470,7 +508,7 @@ class TripTabService:
         return record
 
     def void_expense(self, group_id: UUID, target_id: UUID, reason: str) -> ExpenseVoid:
-        with self._financial_transaction():
+        with self._financial_transaction(group_id):
             self._active_expense(group_id, target_id)
             void = ExpenseVoid(
                 target_id, group_id, reason, datetime.now(UTC), self.current_user.id
@@ -508,7 +546,7 @@ class TripTabService:
     def void_settlement(
         self, group_id: UUID, target_id: UUID, reason: str
     ) -> SettlementVoid:
-        with self._financial_transaction():
+        with self._financial_transaction(group_id):
             self._active_settlement(group_id, target_id)
             void = SettlementVoid(
                 target_id, group_id, reason, datetime.now(UTC), self.current_user.id

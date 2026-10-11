@@ -167,6 +167,12 @@ class SettlementSuggestionsResponse(BaseModel):
     suggestions: list[SettlementSuggestionResponse]
 
 
+class SettlementSuggestionConfirm(RequestModel):
+    from_member_id: UUID
+    to_member_id: UUID
+    amount: Amount
+
+
 class SettlementCreate(RequestModel):
     from_member_id: UUID
     to_member_id: UUID

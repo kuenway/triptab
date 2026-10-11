@@ -48,9 +48,10 @@ members from another group are rejected. Recalculating the same supplied history
 yields the same result.
 
 The caller must include historical members referenced by financial records.
-Inactive-member selection, idempotency, ledger versions, and general concurrency
-controls remain deferred. The application loads effective persisted history before
-calling accounting; duplicate voids are protected by database uniqueness.
+Inactive-member selection, generic idempotency and ledger versions remain deferred.
+The application loads effective persisted history before calling accounting;
+duplicate voids are protected by database uniqueness. M17C serializes all financial
+mutations within a Trip, as described below.
 
 ## Settlement suggestions
 
@@ -87,7 +88,8 @@ guarantee the mathematically minimum number of transfers.
 The application reuses `get_balances()` and then calls `suggest_settlements()`.
 `GET /api/v1/groups/{group_id}/settlement-suggestions` includes member IDs, display
 names, currency, and amounts; unknown groups return 404 and settled groups return
-an empty suggestions list. Suggestions have no write endpoint or storage model.
+an empty suggestions list. Suggestions have no storage model; confirmation below
+creates a Settlement only after revalidating a current suggestion.
 
 ## Recording actual payments
 
@@ -111,17 +113,58 @@ display names, ordered by `occurred_at` descending, then UUID descending (matchi
 expense-history ordering). Payment history stays separate from expense history.
 Suggestions are never included in it.
 
-A displayed suggestion can become stale. Confirming it asserts that the supplied
-real-world transfer occurred, rather than executing a current financial plan.
-There is no suggestion pointer or ledger-version check. After recording a payment,
-the frontend refreshes authoritative balances, suggestions, and payment history;
-it does not calculate balance changes itself.
+## Confirming a current suggestion (M17C)
 
-The payment form disables submission while a request or refresh is pending and
-guards repeated submissions from the same form interaction. This is UI protection,
-not an exactly-once guarantee. An uncertain network response may follow a committed
-write; check payment history before retrying. Server-side idempotency, ledger
-versions, and optimistic locking remain production-hardening concerns.
+These are distinct commands:
+
+| POST path under `/api/v1/groups/{group_id}` | Body | Meaning |
+| --- | --- | --- |
+| `/settlements` | Sender/recipient UUIDs, amount, aware `occurred_at` | Record an arbitrary real external transfer; partial payments and overpayments remain valid |
+| `/settlement-suggestions/confirm` | `from_member_id`, `to_member_id`, positive integer NTD `amount` | Confirm one exact **current** derived suggestion; the server records the UTC confirmation time |
+
+Confirmation runs in one application-owned transaction: authorize Trip access,
+lock the Trip financial mutations, authorize the existing owner/linked sender/linked
+recipient rule, reload effective expenses/splits/settlements, derive balances and
+suggestions with the unchanged pure accounting functions, and find an exact
+sender/recipient/amount match. Only a current match becomes a new immutable
+Settlement. Nothing is persisted for the suggestion itself.
+
+A successful confirmation returns 201 with the existing Settlement response.
+A missing exact match returns the existing structured 409 conflict and rolls back
+without inserting a Settlement. Authentication, CSRF, Origin and no-store policies
+remain unchanged; 401/403/404/422 follow the existing authenticated creation
+conventions. Missing or cross-Trip members remain 404. A generic Settlement never
+passes through suggestion matching and remains valid even if it differs from any
+suggestion.
+
+All seven financial commands acquire the same Group row `FOR NO KEY UPDATE` lock
+before reading effective financial state or mutating financial child rows, and hold
+it until commit/rollback. The six existing commands are Expense create/correct/void
+and Settlement create/correct/void. With PostgreSQL's default READ COMMITTED,
+queries after a waiting lock see the preceding writer's committed state. Thus two
+clients confirming Bob → Alice NT$300 against a single current suggestion yield
+one success and one conflict, one Settlement and zero final balances. Other expense
+or transfer changes serialize with this same revalidation point.
+
+The shared wrapper is `_financial_transaction(group_id)`; repository writes still
+flush but never commit. The lock is compatible with Group foreign-key key-share
+locks, avoiding an inversion with invitation/member workflows that lock a member
+first. Financial commands acquire the Group lock before child-row locks. See
+[the PostgreSQL row-lock conflict matrix](https://www.postgresql.org/docs/18/explicit-locking.html).
+
+The Balances UI shows personal and traveler net positions, then **Suggested
+transfers**. **Mark settled** opens a native modal with explicit external-transfer
+wording; **Confirm settled** submits the exact API tuple, never an amount computed
+by the browser. Cancel creates nothing. Success refreshes balances, suggestions
+and payment history. A 409 refreshes and asks the user to review; it never retries
+automatically. Current payment correction/void controls remain in History, linked
+by **View settlement history**; the generic manual creation UI is deferred.
+
+This is atomic current-suggestion validation, not a generic idempotency guarantee:
+a new legitimate financial state might later derive the same tuple. An uncertain
+network/5xx response blocks resubmission from that dialog and directs the user to
+history before trying again. No idempotency table, persisted suggestion, ledger
+version, migration or second accounting formula is introduced.
 
 The authenticated current User supplies `created_by_user_id` for expense and
 settlement creation, voids, and corrections. Group authorization lives in the

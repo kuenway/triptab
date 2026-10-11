@@ -23,7 +23,7 @@ async function register(page: Page, name: string) {
   return email;
 }
 
-test("records Bob's real payment and refreshes the trip", async ({ page }) => {
+test("confirms Bob's external settlement and preserves correction history", async ({ page }) => {
   const email = await register(page, "Alice");
   await page.getByLabel("Trip name").fill(`Settle-up smoke ${Date.now()}`);
   await page.getByRole("button", { name: "Create trip" }).click();
@@ -47,27 +47,28 @@ test("records Bob's real payment and refreshes the trip", async ({ page }) => {
   await expense.getByRole("button", { name: "Add expense" }).click();
 
   await openSection(page, "Balances");
-  const suggestions = page.getByRole("region", { name: "Suggested payments", exact: true });
-  const bobSuggestion = suggestions.locator(".suggestion-item").filter({ hasText: "Bob → Alice" });
+  const suggestions = page.getByRole("region", { name: "Suggested transfers", exact: true });
+  const bobSuggestion = suggestions.locator(".suggestion-item").filter({ hasText: "Bob → You" });
   await expect(bobSuggestion).toContainText("NT$300");
-  await bobSuggestion.getByRole("button", { name: "Mark as paid" }).click();
-  const confirmation = suggestions.getByRole("group", { name: "Record payment?" });
+  await bobSuggestion.getByRole("button", { name: /^Mark settled/ }).click();
+  const confirmation = page.getByRole("dialog", { name: "Mark this transfer as settled?" });
   await expect(confirmation).toContainText("TripTab does not transfer money.");
-  await confirmation.getByLabel("When did the payment happen?").fill("2026-10-03T12:30");
-  await confirmation.getByRole("button", { name: "Record payment", exact: true }).click();
+  await confirmation.getByRole("button", { name: "Confirm settled", exact: true }).click();
 
   const balances = page.getByRole("region", { name: "Balances", exact: true });
-  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("settled");
-  await expect(balances.locator(".balance-row").filter({ hasText: "Alice" })).toContainText("gets back NT$300");
-  await expect(balances.locator(".balance-row").filter({ hasText: "Charlie" })).toContainText("owes NT$300");
+  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Settled");
+  await expect(balances.locator(".balance-row").filter({ hasText: "You" })).toContainText("Is owed NT$300");
+  await expect(balances.locator(".balance-row").filter({ hasText: "Charlie" })).toContainText("Owes NT$300");
   await expect(suggestions.locator(".suggestion-item")).toHaveCount(1);
-  await expect(suggestions.locator(".suggestion-item")).toContainText("Charlie → Alice");
-  const history = page.getByRole("region", { name: "Current payments", exact: true });
-  await expect(history).toContainText("Bob paid Alice");
+  await expect(suggestions.locator(".suggestion-item")).toContainText("Charlie → You");
+  await openSection(page, "History");
+  const history = page.getByRole("region", { name: "Payment history", exact: true });
+  await expect(history).toContainText("Bob settled with Alice");
   await expect(history).toContainText("NT$300");
   await page.reload();
-  await expect(history).toContainText("Bob paid Alice");
-  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("settled");
+  await expect(history).toContainText("Bob settled with Alice");
+  await openSection(page, "Balances");
+  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Settled");
   const tripUrl = page.url();
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL(/\/login$/);
@@ -78,8 +79,9 @@ test("records Bob's real payment and refreshes the trip", async ({ page }) => {
   await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByLabel("Trip name")).toBeVisible();
   await page.goto(tripUrl);
-  await expect(history).toContainText("Bob paid Alice");
-  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("settled");
+  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Settled");
+  await openSection(page, "History");
+  await expect(history).toContainText("Bob settled with Alice");
 
   const currentPayments = history.getByRole("group", { name: "Current payments", exact: true });
   await currentPayments.getByRole("button", { name: "Edit" }).click();
@@ -96,7 +98,9 @@ test("records Bob's real payment and refreshes the trip", async ({ page }) => {
   await currentPayments.getByRole("link", { name: "View edit history" }).click();
   await expect(paymentHistory).toContainText("Actual payment was 200");
   await expect(paymentHistory.getByRole("link", { name: "Replaced by another payment · NT$200" })).toBeVisible();
-  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("owes NT$100");
+  await openSection(page, "Balances");
+  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Owes NT$100");
+  await openSection(page, "History");
   await currentPayments.getByRole("button", { name: "Delete payment" }).click();
   const deletePayment = currentPayments.getByRole("form", { name: "Delete payment" });
   await deletePayment.getByLabel("Reason").fill("Payment did not happen");
@@ -104,8 +108,9 @@ test("records Bob's real payment and refreshes the trip", async ({ page }) => {
   await expect(currentPayments.locator("article")).toHaveCount(0);
   await expect(paymentHistory.locator("article")).toHaveCount(2);
   await expect(paymentHistory).toContainText("Payment did not happen");
-  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("owes NT$300");
   await expect(paymentHistory.locator("article").getByRole("button")).toHaveCount(0);
+  await openSection(page, "Balances");
+  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Owes NT$300");
 
 });
 
@@ -132,7 +137,7 @@ test("edits and deletes an expense while keeping previous versions in history", 
   const tripUrl = page.url();
   await openSection(page, "Balances");
   const balances = page.getByRole("region", { name: "Balances", exact: true });
-  await expect(balances.locator(".balance-row").filter({ hasText: "Alice" })).toContainText("gets back NT$600");
+  await expect(balances.locator(".balance-row").filter({ hasText: "You" })).toContainText("Is owed NT$600");
   await openSection(page, "Expenses");
   const region = page.getByRole("region", { name: "Current expenses", exact: true });
   const current = region.getByRole("group", { name: "Current expenses", exact: true });
@@ -165,8 +170,8 @@ test("edits and deletes an expense while keeping previous versions in history", 
   await expect(original.getByRole("button")).toHaveCount(0);
   await original.getByRole("link", { name: "Replaced by another expense · NT$990" }).click();
   await openSection(page, "Balances");
-  await expect(balances.locator(".balance-row").filter({ hasText: "Alice" })).toContainText("gets back NT$660");
-  for (const name of ["Bob", "Charlie"]) await expect(balances.locator(".balance-row").filter({ hasText: name })).toContainText("owes NT$330");
+  await expect(balances.locator(".balance-row").filter({ hasText: "You" })).toContainText("Is owed NT$660");
+  for (const name of ["Bob", "Charlie"]) await expect(balances.locator(".balance-row").filter({ hasText: name })).toContainText("Owes NT$330");
   await page.goto(tripUrl);
   await expect(current.locator("article")).toHaveCount(1);
   await expect(history).toHaveJSProperty("open", false);
@@ -184,8 +189,8 @@ test("edits and deletes an expense while keeping previous versions in history", 
   await expect(current).toContainText("No current expenses");
   await expect(region.locator(".section-heading .count")).toHaveText("0");
   await openSection(page, "Balances");
-  await expect(balances.locator(".balance-row").filter({ hasText: "Alice" })).toContainText("settled");
-  for (const name of ["Bob", "Charlie"]) await expect(balances.locator(".balance-row").filter({ hasText: name })).toContainText("settled");
+  await expect(balances.locator(".balance-row").filter({ hasText: "You" })).toContainText("Settled");
+  for (const name of ["Bob", "Charlie"]) await expect(balances.locator(".balance-row").filter({ hasText: name })).toContainText("Settled");
   await openSection(page, "Expenses");
   await region.getByText("Show expense history (2)").click();
   await expect(history.locator("article")).toHaveCount(2);

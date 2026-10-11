@@ -67,6 +67,15 @@ class LedgerRepository:
         row = self.session.get(GroupRow, group_id)
         return group_from_row(row) if row else None
 
+    def lock_group_finances(self, group_id: UUID) -> None:
+        # PostgreSQL FOR NO KEY UPDATE: exclusive between financial writers,
+        # compatible with FK key-share locks taken by invitation/member inserts.
+        self.session.execute(
+            select(GroupRow.id)
+            .where(GroupRow.id == group_id)
+            .with_for_update(key_share=True)
+        )
+
     def list_groups(self, user_id: UUID) -> tuple[Group, ...]:
         rows = self.session.scalars(
             select(GroupRow)

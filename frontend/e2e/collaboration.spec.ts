@@ -88,7 +88,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   const before = await (await page.request.get(`/api/v1/groups/${tripId}/expenses`)).json();
   await openSection(page, "Balances");
   const balances = page.getByRole("region", { name: "Balances", exact: true });
-  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$600");
+  await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Is owed NT$600");
   await openSection(page, "Travelers");
   const bobRow = travelers.getByRole("group", { name: "Invitation for Bob", exact: true });
   await bobRow.getByRole("button", { name: "Remove traveler" }).click();
@@ -137,7 +137,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await expect(bobTravelers.getByRole("button", { name: "Invite" })).toHaveCount(0);
     expect(await (await bob.request.get(`/api/v1/groups/${tripId}/expenses`)).json()).toEqual(before);
     await openSection(bob, "Balances");
-    await expect(bob.getByRole("region", { name: "Balances", exact: true }).locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$600");
+    await expect(bob.getByRole("region", { name: "Balances", exact: true }).locator(".balance-row").filter({ hasText: "You" })).toContainText("Is owed NT$600");
     await bob.getByRole("link", { name: "All trips", exact: false }).click();
     await expect(bob.getByRole("link", { name: new RegExp(`Japan 2027 ${suffix}`) })).toBeVisible();
     await bob.goto(tripUrl);
@@ -163,8 +163,8 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await openSection(page, "Expenses");
     await expect(page.getByRole("region", { name: "Current expenses", exact: true })).toContainText("Bob records Charlie's taxi");
     await openSection(page, "Balances");
-    await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$540");
-    await expect(balances.locator(".balance-row").filter({ hasText: "Charlie" })).toContainText("owes NT$240");
+    await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Is owed NT$540");
+    await expect(balances.locator(".balance-row").filter({ hasText: "Charlie" })).toContainText("Owes NT$240");
     expect(requests.every((url) => !url.includes(parsed.hash.slice(7)))).toBe(true);
     expect(await bob.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length }))).toEqual({ local: 0, session: 0 });
     await bob.goto(unrelated);
