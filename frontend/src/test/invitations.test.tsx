@@ -189,8 +189,9 @@ it("keeps one traveler row, with owner-only Guest actions and no accepted invita
   expect(removal.textContent).toBe("");
   expect(removal.getAttribute("title")).toBe("Remove traveler");
   expect(removal.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
-  expect(row.getByRole("button", { name: "Invite" })).toBeTruthy();
-  expect(row.getByRole("button", { name: "Revoke invitation" })).toBeTruthy();
+  expect(row.getByRole("button", { name: "New link" })).toBeTruthy();
+  expect(row.queryByRole("button", { name: "Invite" })).toBeNull();
+  expect(row.getByRole("button", { name: "Revoke invitation" }).textContent).toBe("Revoke");
   expect(row.queryByText("Remove traveler")).toBeNull();
   const owner = within(screen.getByRole("group", { name: "Invitation for Alice" }));
   expect(owner.queryByRole("button")).toBeNull();
@@ -233,4 +234,26 @@ it("shows financial-history rejection without removing the traveler or invitatio
   expect(screen.getByText("Bob")).toBeTruthy();
   expect(screen.getByText("Pending invitation")).toBeTruthy();
   expect(changed).not.toHaveBeenCalled();
+});
+
+
+it("confirms pending link replacement, preserving the current link on cancellation", async () => {
+  vi.mocked(api.createInvitation).mockResolvedValueOnce({ ...invitation, token }).mockResolvedValueOnce({ ...invitation, id: "replacement", token: "b".repeat(43) });
+  vi.mocked(api.listInvitations).mockResolvedValueOnce([]).mockResolvedValue([invitation]);
+  const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+  try {
+    render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} />);
+    expect(await screen.findByText("No invitation")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+    expect(await screen.findByLabelText("Invitation link")).toHaveProperty("value", "http://localhost:3000/invite#token=" + token);
+    expect(confirm).not.toHaveBeenCalled();
+    const newLink = await screen.findByRole("button", { name: "New link" });
+    fireEvent.click(newLink);
+    expect(confirm).toHaveBeenCalledWith("Generate a new invite link?\nThe current invite link will stop working.");
+    expect(api.createInvitation).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Invitation link")).toHaveProperty("value", "http://localhost:3000/invite#token=" + token);
+    fireEvent.click(newLink);
+    await waitFor(() => expect(api.createInvitation).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByLabelText("Invitation link")).toHaveProperty("value", "http://localhost:3000/invite#token=" + "b".repeat(43)));
+  } finally { confirm.mockRestore(); }
 });

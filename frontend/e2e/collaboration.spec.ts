@@ -39,6 +39,21 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   await page.getByRole("region", { name: "Travelers", exact: true }).screenshot({ path: testInfo.outputPath("guest-actions-mobile.png") });
   await unused.getByRole("button", { name: "Invite" }).click();
   const unusedLink = await travelers.getByLabel("Invitation link").inputValue();
+  await expect(actions.getByRole("button", { name: "Invite", exact: true })).toHaveCount(0);
+  await expect(actions.getByRole("button", { name: "Revoke invitation" })).toHaveText("Revoke");
+  page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("confirm");
+    expect(dialog.message()).toBe("Generate a new invite link?\nThe current invite link will stop working.");
+    await dialog.dismiss();
+  });
+  await actions.getByRole("button", { name: "New link", exact: true }).click();
+  await expect(travelers.getByLabel("Invitation link")).toHaveValue(unusedLink);
+  page.once("dialog", (dialog) => dialog.accept());
+  await actions.getByRole("button", { name: "New link", exact: true }).click();
+  await expect(travelers.getByLabel("Invitation link")).not.toHaveValue(unusedLink);
+  const replacementLink = await travelers.getByLabel("Invitation link").inputValue();
+  const oldPreview = await page.request.post("/api/v1/invitations/preview", { data: { token: new URL(unusedLink).hash.slice(7) }, headers: { Origin: "http://127.0.0.1:3100" } });
+  expect(oldPreview.status()).toBe(404);
   await unused.getByRole("button", { name: "Close invite link" }).click();
   const pendingBoxes = await actions.getByRole("button").evaluateAll((buttons) => buttons.map((button) => ({ y: button.getBoundingClientRect().y, height: button.getBoundingClientRect().height })));
   expect(new Set(pendingBoxes.map((box) => box.y)).size).toBe(1);
@@ -52,7 +67,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   await page.keyboard.press("Enter");
   await unused.getByRole("button", { name: "Confirm removal" }).click();
   await expect(unused).toHaveCount(0);
-  const unavailable = await page.request.post("/api/v1/invitations/preview", { data: { token: new URL(unusedLink).hash.slice(7) }, headers: { Origin: "http://127.0.0.1:3100" } });
+  const unavailable = await page.request.post("/api/v1/invitations/preview", { data: { token: new URL(replacementLink).hash.slice(7) }, headers: { Origin: "http://127.0.0.1:3100" } });
   expect(unavailable.status()).toBe(404);
   const beforeMembers = await (await page.request.get(`/api/v1/groups/${tripId}/members`)).json();
   const bobId = beforeMembers.find((m: { display_name: string }) => m.display_name === "Bob").id;
