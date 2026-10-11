@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 import { AuthForm, AuthProvider } from "../components/auth";
 import { InvitationPage, TravelerInvitations } from "../components/invitations";
-import { TripDashboard } from "../components/trip-dashboard";
+import { TravelerForm, TripDashboard } from "../components/trip-dashboard";
 import { api, ApiError, TripInvitation, Traveler } from "../lib/api";
 
 const { push, replace } = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
@@ -256,4 +256,51 @@ it("confirms pending link replacement, preserving the current link on cancellati
     await waitFor(() => expect(api.createInvitation).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByLabelText("Invitation link")).toHaveProperty("value", "http://localhost:3000/invite#token=" + "b".repeat(43)));
   } finally { confirm.mockRestore(); }
+});
+
+it("keeps same-named traveler actions and errors attached to UUIDs across row reordering", async () => {
+  const duplicates = [
+    { ...travelers[1], id: "historical", display_name: "aaa" },
+    { ...travelers[1], id: "unused", display_name: "aaa" },
+  ];
+  vi.mocked(api.removeTraveler).mockRejectedValueOnce(new ApiError("This traveler has financial history and cannot be removed.", 409)).mockResolvedValue(undefined);
+  const changed = vi.fn().mockResolvedValue(undefined);
+  const view = render(<TravelerInvitations canManage={true} tripId="trip" travelers={duplicates} onChanged={changed} />);
+  const rows = screen.getAllByRole("group", { name: "Invitation for aaa" });
+  fireEvent.click(within(rows[0]).getByRole("button", { name: "Remove traveler" }));
+  fireEvent.click(within(rows[0]).getByRole("button", { name: "Confirm removal" }));
+  expect(rows[0].getAttribute("aria-busy")).toBe("true");
+  expect(rows[1].getAttribute("aria-busy")).toBe("false");
+  expect(await within(rows[0]).findByRole("alert")).toHaveProperty("textContent", "This traveler has financial history and cannot be removed.");
+  expect(within(rows[1]).queryByRole("alert")).toBeNull();
+  expect(api.removeTraveler).toHaveBeenLastCalledWith("trip", "historical");
+  view.rerender(<TravelerInvitations canManage={true} tripId="trip" travelers={[duplicates[1], duplicates[0]]} onChanged={changed} />);
+  const reordered = screen.getAllByRole("group", { name: "Invitation for aaa" });
+  expect(within(reordered[0]).queryByRole("alert")).toBeNull();
+  expect(within(reordered[1]).getByRole("alert")).toBeTruthy();
+  fireEvent.click(within(reordered[0]).getByRole("button", { name: "Remove traveler" }));
+  fireEvent.click(within(reordered[0]).getByRole("button", { name: "Confirm removal" }));
+  await waitFor(() => expect(changed).toHaveBeenCalledOnce());
+  expect(api.removeTraveler).toHaveBeenLastCalledWith("trip", "unused");
+  expect(within(reordered[1]).getByRole("alert")).toBeTruthy();
+});
+
+it("shows backend duplicate errors beside Add traveler and preserves casing/input for correction", async () => {
+  const added = vi.fn();
+  vi.mocked(api.addTraveler).mockRejectedValueOnce(new ApiError('A traveler named "Alice" already exists in this trip.', 409)).mockResolvedValue(travelers[1]);
+  const view = render(<TravelerForm tripId="trip" onAdded={added} />);
+  const input = screen.getByLabelText("Traveler name");
+  fireEvent.change(input, { target: { value: " Alice " } });
+  fireEvent.click(screen.getByRole("button", { name: "Add traveler" }));
+  const error = await screen.findByRole("alert");
+  expect(input.closest("form")?.contains(error)).toBe(true);
+  expect(input).toHaveProperty("value", " Alice ");
+  expect(api.addTraveler).toHaveBeenLastCalledWith("trip", "Alice");
+  expect(added).not.toHaveBeenCalled();
+  // The backend, rather than any cross-Trip client cache, owns uniqueness.
+  view.rerender(<TravelerForm tripId="other-trip" onAdded={added} />);
+  fireEvent.click(screen.getByRole("button", { name: "Add traveler" }));
+  await waitFor(() => expect(added).toHaveBeenCalledOnce());
+  expect(api.addTraveler).toHaveBeenLastCalledWith("other-trip", "Alice");
+  expect(input).toHaveProperty("value", "");
 });

@@ -21,6 +21,7 @@ from app.application.auth import (
 from app.application.invitations import InvitationConflict
 from app.application.service import (
     FinancialConflict,
+    MemberNameConflict,
     MemberRemovalConflict,
     ResourceNotFound,
 )
@@ -40,6 +41,7 @@ CLIENT_ERRORS = {
     ResourceNotFound: (404, "resource_not_found"),
     FinancialConflict: (409, "financial_conflict"),
     MemberRemovalConflict: (409, "member_conflict"),
+    MemberNameConflict: (409, "member_conflict"),
     InvitationConflict: (409, "invitation_conflict"),
     DomainValidationError: (422, "domain_validation"),
     AccountingValidationError: (422, "accounting_validation"),
@@ -49,6 +51,8 @@ CLIENT_ERRORS = {
 async def client_error(request: Request, error: Exception) -> JSONResponse:
     status, category = CLIENT_ERRORS[type(error)]
     request.state.error_category = category
+    if isinstance(error, MemberRemovalConflict):
+        request.state.member_removal_diagnostics = error.diagnostics
     return JSONResponse(status_code=status, content={"detail": str(error)})
 
 

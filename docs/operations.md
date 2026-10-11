@@ -113,6 +113,14 @@ type plus file basename/function/line frames, excluding exception text, source a
 locals. Disable raw Uvicorn access logs as above; ingress logs must omit queries
 and sensitive headers too.
 
+Rejected Guest removal adds `group_id`, `member_id`, and
+`removal_rejection_reason` to that same request log. Reasons identify an Owner,
+linked Member, persisted financial reference, or one of the four known financial
+foreign-key constraints that prevented a concurrent deletion. These are internal
+categories, never exception text or SQL. Display names and financial details are
+not logged. Use the UUIDs to investigate the exact financial identity; same-named
+travelers remain distinct.
+
 API responses use no-store, nosniff, no-referrer, frame denial and restrictive API
 CSP. Frontend pages use nosniff/no-referrer plus CSP `frame-ancestors 'none'`,
 `base-uri 'self'`, `object-src 'none'`, `form-action 'self'`, and legacy frame denial.

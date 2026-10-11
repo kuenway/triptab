@@ -11,18 +11,20 @@ export function TravelerInvitations({ tripId, travelers, canManage, onChanged }:
   const [invitations, setInvitations] = useState<TripInvitation[]>([]);
   const [link, setLink] = useState<{ memberId: string; url: string } | null>(null);
   const [confirmRemoval, setConfirmRemoval] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [listError, setListError] = useState("");
+  const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
+  const busy = busyMemberId !== null;
   const [copied, setCopied] = useState(false);
   const pending = useRef(false);
   const label = useId();
   const load = useCallback(async () => { if (canManage) setInvitations(await api.listInvitations(tripId)); }, [tripId, canManage]);
-  useEffect(() => { void Promise.resolve().then(load).catch(() => setError("Could not load invitations. Try refreshing the trip.")); }, [load, travelers]);
+  useEffect(() => { void Promise.resolve().then(load).catch(() => setListError("Could not load invitations. Try refreshing the trip.")); }, [load, travelers]);
 
   async function change(member: Traveler, invitation?: TripInvitation, remove = false) {
     if (pending.current) return;
     pending.current = true;
-    setBusy(true); setError(""); setLink(null); setCopied(false);
+    setBusyMemberId(member.id); setListError(""); setErrors((current) => ({ ...current, [member.id]: "" })); setLink(null); setCopied(false);
     try {
       if (remove) { await api.removeTraveler(tripId, member.id); setConfirmRemoval(null); await onChanged?.(); }
       else if (invitation) await api.revokeInvitation(tripId, invitation.id);
@@ -31,8 +33,8 @@ export function TravelerInvitations({ tripId, travelers, canManage, onChanged }:
         setLink({ memberId: member.id, url: `${window.location.origin}/invite#token=${encodeURIComponent(created.token)}` });
       }
       await load();
-    } catch (cause) { setError((cause as Error).message); }
-    finally { pending.current = false; setBusy(false); }
+    } catch (cause) { setErrors((current) => ({ ...current, [member.id]: (cause as Error).message })); }
+    finally { pending.current = false; setBusyMemberId(null); }
   }
 
   return <div className="traveler-list">
@@ -40,22 +42,23 @@ export function TravelerInvitations({ tripId, travelers, canManage, onChanged }:
       const guest = member.role !== "owner" && !member.user_id;
       // The API returns newest first. Detached audit never creates a traveler row.
       const latest = invitations.find((invitation) => invitation.target_member_id === member.id);
-      return <div role="group" aria-label={`Invitation for ${member.display_name}`} key={member.id} className="traveler-row">
+      return <div role="group" aria-label={`Invitation for ${member.display_name}`} key={member.id} aria-busy={busyMemberId === member.id} className="traveler-row">
         <span className="person-dot" aria-hidden="true">{member.display_name.charAt(0).toUpperCase()}</span>
         <div className="traveler-identity"><span className="person-name">{member.display_name}</span> <span className="strategy-pill">{member.role === "owner" ? "Owner" : guest ? "Guest" : "Member"}</span>
           {guest && canManage ? <small className="muted">{latest ? `${latest.status.charAt(0).toUpperCase()}${latest.status.slice(1)} invitation` : "No invitation"}</small> : null}
         </div>
-        {guest && canManage ? <div className="traveler-actions"><button disabled={busy} onClick={() => { if (latest?.status !== "pending" || window.confirm("Generate a new invite link?\nThe current invite link will stop working.")) void change(member); }}>{latest?.status === "pending" ? "New link" : "Invite"}</button>{latest?.status === "pending" ? <button disabled={busy} aria-label="Revoke invitation" onClick={() => void change(member, latest)}>Revoke</button> : null}<button type="button" className="remove-traveler" aria-label="Remove traveler" title="Remove traveler" disabled={busy} onClick={() => { setError(""); setConfirmRemoval(member.id); }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg></button></div> : null}
+        {guest && canManage ? <div className="traveler-actions"><button disabled={busy} onClick={() => { if (latest?.status !== "pending" || window.confirm("Generate a new invite link?\nThe current invite link will stop working.")) void change(member); }}>{latest?.status === "pending" ? "New link" : "Invite"}</button>{latest?.status === "pending" ? <button disabled={busy} aria-label="Revoke invitation" onClick={() => void change(member, latest)}>Revoke</button> : null}<button type="button" className="remove-traveler" aria-label="Remove traveler" title="Remove traveler" disabled={busy} onClick={() => { setErrors((current) => ({ ...current, [member.id]: "" })); setConfirmRemoval(member.id); }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg></button></div> : null}
         {confirmRemoval === member.id && guest && canManage ? <div className="traveler-detail"><p>Remove {member.display_name} from this trip? Only an unused Guest can be removed. Any invitation will be revoked.</p><div className="payment-actions"><button disabled={busy} onClick={() => void change(member, undefined, true)}>Confirm removal</button><button disabled={busy} onClick={() => setConfirmRemoval(null)}>Cancel removal</button></div></div> : null}
         {link?.memberId === member.id && guest && canManage ? <div className="stack-form traveler-detail">
           <label htmlFor={label}>Invitation link</label><input id={label} readOnly value={link.url} />
           <p className="muted">Share privately. Creating another invitation replaces this link. Closed links cannot be retrieved.</p>
-          <div className="payment-actions"><button onClick={async () => { try { await navigator.clipboard.writeText(link.url); setCopied(true); } catch { setError("Could not copy. Select and copy the invitation link above."); } }}>Copy invite link</button><button onClick={() => setLink(null)}>Close invite link</button></div>
+          <div className="payment-actions"><button onClick={async () => { try { await navigator.clipboard.writeText(link.url); setCopied(true); } catch { setErrors((current) => ({ ...current, [member.id]: "Could not copy. Select and copy the invitation link above." })); } }}>Copy invite link</button><button onClick={() => setLink(null)}>Close invite link</button></div>
           {copied ? <p role="status">Copied invite link.</p> : null}
         </div> : null}
+        {errors[member.id] ? <p role="alert" className="alert traveler-detail">{errors[member.id]}</p> : null}
       </div>;
     })}
-    {error ? <p role="alert" className="alert">{error}</p> : null}
+    {listError ? <p role="alert" className="alert">{listError}</p> : null}
   </div>;
 }
 

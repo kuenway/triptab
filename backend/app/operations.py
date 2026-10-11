@@ -166,6 +166,7 @@ class OperationsMiddleware:
             }
             if failure:
                 fields.update(failure, error_category="unexpected")
+            fields.update(getattr(request.state, "member_removal_diagnostics", {}))
             level = (
                 logging.ERROR
                 if failure or status >= 500

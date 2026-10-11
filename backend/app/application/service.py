@@ -28,7 +28,8 @@ from app.domain import (
     SplitStrategy,
     User,
 )
-from app.persistence.models import GroupMemberRow, TripInvitationRow
+from app.domain.names import canonical_traveler_name
+from app.persistence.models import GroupMemberRow, GroupRow, TripInvitationRow
 from app.persistence.repository import LedgerRepository
 
 
@@ -42,6 +43,20 @@ class FinancialConflict(Exception):
 
 class MemberRemovalConflict(Exception):
     """Only unclaimed guests without financial history can be removed."""
+
+    def __init__(
+        self, message: str, *, group_id: UUID, member_id: UUID, reason: str
+    ) -> None:
+        super().__init__(message)
+        self.diagnostics = {
+            "group_id": str(group_id),
+            "member_id": str(member_id),
+            "removal_rejection_reason": reason,
+        }
+
+
+class MemberNameConflict(Exception):
+    """A traveler already uses this canonical display name in the trip."""
 
 
 class TripTabService:
@@ -98,10 +113,25 @@ class TripTabService:
         return self._group(group_id)
 
     def create_guest_member(self, group_id: UUID, display_name: str) -> GroupMember:
-        member = GroupMember(id=uuid4(), group_id=group_id, display_name=display_name)
+        member = GroupMember(
+            id=uuid4(), group_id=group_id, display_name=display_name.strip()
+        )
         with self.session.begin():
             self._group(group_id)
             self._require_owner(group_id)
+            # Serialize the check and insert across application workers per Trip.
+            self.session.execute(
+                select(GroupRow.id).where(GroupRow.id == group_id).with_for_update()
+            )
+            canonical = canonical_traveler_name(member.display_name)
+            if any(
+                canonical_traveler_name(existing.display_name) == canonical
+                for existing in self.repo.list_members(group_id)
+            ):
+                raise MemberNameConflict(
+                    f'A traveler named "{member.display_name}" '
+                    "already exists in this trip."
+                )
             self.repo.save_member(member)
         return member
 
@@ -125,10 +155,18 @@ class TripTabService:
                 if member is None:
                     raise ResourceNotFound("member not found")
                 if member.role == "owner" or member.user_id is not None:
-                    raise MemberRemovalConflict("only unclaimed guests can be removed")
+                    raise MemberRemovalConflict(
+                        "only unclaimed guests can be removed",
+                        group_id=group_id,
+                        member_id=member_id,
+                        reason="owner" if member.role == "owner" else "linked_member",
+                    )
                 if self.repo.has_member_financial_history(group_id, member_id):
                     raise MemberRemovalConflict(
-                        "This traveler has financial history and cannot be removed."
+                        "This traveler has financial history and cannot be removed.",
+                        group_id=group_id,
+                        member_id=member_id,
+                        reason="financial_reference",
                     )
                 # Match the member-first invitation lock order.
                 self.session.execute(
@@ -168,7 +206,10 @@ class TripTabService:
                 "fk_settlements_group_recipient",
             }:
                 raise MemberRemovalConflict(
-                    "This traveler has financial history and cannot be removed."
+                    "This traveler has financial history and cannot be removed.",
+                    group_id=group_id,
+                    member_id=member_id,
+                    reason=constraint,
                 ) from None
             raise
 
