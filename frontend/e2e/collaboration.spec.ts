@@ -10,12 +10,14 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   await page.getByLabel("Email", { exact: true }).fill(`alice-collaboration-${suffix}@example.com`);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Register", exact: true }).click();
-  await expect(page.getByLabel("Trip name")).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ New trip", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill(`Unrelated trip ${suffix}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
   const unrelated = page.url();
   await page.getByRole("link", { name: "All trips", exact: false }).click();
+  await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill(`Japan 2027 ${suffix}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);

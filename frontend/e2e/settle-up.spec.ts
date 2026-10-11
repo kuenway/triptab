@@ -11,7 +11,7 @@ async function register(page: Page, name: string) {
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("TripTab test password 123");
   await page.getByRole("button", { name: "Register", exact: true }).click();
-  await expect(page.getByLabel("Trip name")).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ New trip", exact: true })).toBeVisible();
   // Exercise the real production-build rewrite with an authenticated cookie.
   for (const path of ["/api/v1/auth/me", "/api/v1/groups"]) {
     const api = await page.request.get(path);
@@ -25,6 +25,7 @@ async function register(page: Page, name: string) {
 
 test("confirms Bob's external settlement and preserves correction history", async ({ page }) => {
   const email = await register(page, "Alice");
+  await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill(`Settle-up smoke ${Date.now()}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
@@ -77,7 +78,7 @@ test("confirms Bob's external settlement and preserves correction history", asyn
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("TripTab test password 123");
   await page.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(page.getByLabel("Trip name")).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ New trip", exact: true })).toBeVisible();
   await page.goto(tripUrl);
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Settled");
   await openSection(page, "History");
@@ -117,6 +118,7 @@ test("confirms Bob's external settlement and preserves correction history", asyn
 
 test("edits and deletes an expense while keeping previous versions in history", async ({ page }) => {
   await register(page, "Alice");
+  await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill(`Edit/history smoke ${Date.now()}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
@@ -208,6 +210,7 @@ test("edits and deletes an expense while keeping previous versions in history", 
 
 test("a second account cannot open another account's private trip", async ({ page }) => {
   await register(page, "Alice");
+  await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill(`Private trip ${Date.now()}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);

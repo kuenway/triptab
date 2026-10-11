@@ -86,3 +86,20 @@ remove labels, a route fallback/footer flash and record-centric history wording.
 No new fonts, icons, dependencies, animation framework, actor persistence, social
 activity feed or M17E work was introduced. Production release remains a separate
 review/push/CI/release step.
+
+## Trips home (M17E)
+
+The authenticated home page lists existing Trips first and opens a single native
+New trip dialog: bottom sheet on mobile, centered on desktop. Successful creation
+enters `/trips/{id}`, the canonical Expenses route. Initial authentication remains
+in the M15 shell; list loading, read errors/Retry and empty state are page-local.
+Validation keeps the entered name. An uncertain create is not automatically
+resubmitted: Check your trips closes the dialog and refreshes the list first.
+
+Rows display only `name` from `GET /groups`; `id` supplies the destination, not
+visible copy. The list response currently contains only ID/name/currency/scale.
+Tripmate counts, activity/creation dates, roles, expense counts and balance
+summaries are omitted rather than inferred. Loading N Trips requires one list
+read plus globally necessary session resolution, with no per-Trip member,
+expense or balance reads. Native route prefetch does not fetch client ledger data.
+Richer summaries and any future dedicated summary endpoint remain deferred.

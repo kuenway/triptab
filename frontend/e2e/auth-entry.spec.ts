@@ -36,7 +36,7 @@ test("auth entry stays exclusive while checking, fits mobile, and resumes an inv
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Register", exact: true }).click();
-  await expect(page.getByLabel("Trip name")).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ New trip", exact: true })).toBeVisible();
   let resume!: () => void;
   const checking = new Promise<void>((resolve) => { resume = resolve; });
   await page.route("**/api/v1/auth/me", async (route) => { await checking; await route.continue(); });
@@ -44,9 +44,10 @@ test("auth entry stays exclusive while checking, fits mobile, and resumes an inv
   await expect(page.getByRole("status")).toHaveText("Loading…");
   await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
   resume();
-  await expect(page.getByLabel("Trip name")).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ New trip", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
   await page.unroute("**/api/v1/auth/me");
+  await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill(`Auth invitation ${suffix}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await openSection(page, "Tripmates");

@@ -59,13 +59,14 @@ it("renders trips from the API", async () => {
 it("shows the empty trip state", async () => {
   vi.mocked(api.listTrips).mockResolvedValue([]);
   render(<Home />);
-  expect(await screen.findByText("No trips yet")).toBeTruthy();
+  expect(await screen.findByText("No trips yet.")).toBeTruthy();
 });
 
 it("creates a trip and navigates to it", async () => {
   vi.mocked(api.listTrips).mockResolvedValue([]);
   vi.mocked(api.createTrip).mockResolvedValue(trip);
   render(<Home />);
+  fireEvent.click(await screen.findByRole("button", { name: "+ New trip" }));
   fireEvent.change(await screen.findByLabelText("Trip name"), { target: { value: "Tokyo Weekend" } });
   fireEvent.click(screen.getByRole("button", { name: "Create trip" }));
   await waitFor(() => expect(api.createTrip).toHaveBeenCalledWith("Tokyo Weekend"));
@@ -76,6 +77,7 @@ it("shows a create-trip API error beside the form", async () => {
   vi.mocked(api.listTrips).mockResolvedValue([]);
   vi.mocked(api.createTrip).mockRejectedValue(new ApiError("Trip could not be saved.", 422));
   render(<Home />);
+  fireEvent.click(await screen.findByRole("button", { name: "+ New trip" }));
   fireEvent.change(await screen.findByLabelText("Trip name"), { target: { value: "Tokyo Weekend" } });
   fireEvent.click(screen.getByRole("button", { name: "Create trip" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Trip could not be saved.");
@@ -633,7 +635,7 @@ it("shows authentication connectivity errors without claiming the user is logged
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not check your sign-in. Please try again.");
   expect(replace).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Retry sign-in check" }));
-  expect(await screen.findByText("No trips yet")).toBeTruthy();
+  expect(await screen.findByText("No trips yet.")).toBeTruthy();
 });
 
 it("shows owner and guest roles and hides owner-only actions from normal members", async () => {

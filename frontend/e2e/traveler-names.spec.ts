@@ -8,7 +8,8 @@ test("traveler duplicates are rejected within one Trip while unique and cross-Tr
   await page.getByLabel("Email", { exact: true }).fill(`traveler-names-${suffix}@example.com`);
   await page.getByLabel("Password", { exact: true }).fill("Tripmate names test password 123");
   await page.getByRole("button", { name: "Register", exact: true }).click();
-  await expect(page.getByLabel("Trip name")).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ New trip", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill(`Name integrity ${suffix}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await openSection(page, "Tripmates");
@@ -31,6 +32,7 @@ test("traveler duplicates are rejected within one Trip while unique and cross-Tr
   await expect(travelers.getByRole("group", { name: "Tripmate Bob", exact: true })).toBeVisible();
   await expect(travelers.locator(".traveler-row")).toHaveCount(3);
   await page.getByRole("link", { name: "All trips", exact: false }).click();
+  await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill(`Other name integrity ${suffix}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await openSection(page, "Tripmates");

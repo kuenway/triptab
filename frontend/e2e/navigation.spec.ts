@@ -14,6 +14,7 @@ test("Trip routes survive reload, browser history and direct links at mobile and
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("TripTab navigation test 123");
   await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill(`Navigation ${suffix}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
@@ -111,7 +112,7 @@ test("an uncached slow section retains Expenses and the shell until History is r
   await page.getByLabel("Email", { exact: true }).fill(`slow-navigation-${Date.now()}@example.com`);
   await page.getByLabel("Password", { exact: true }).fill("TripTab slow navigation test 123");
   await page.getByRole("button", { name: "Register", exact: true }).click();
-  await expect(page.getByLabel("Trip name")).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ New trip", exact: true })).toBeVisible();
   let release!: () => void, captured!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   const pending = new Promise<void>(resolve => { captured = resolve; });
@@ -120,6 +121,7 @@ test("an uncached slow section retains Expenses and the shell until History is r
     await route.continue();
   });
   try {
+    await page.getByRole("button", { name: "+ New trip", exact: true }).click();
     await page.getByLabel("Trip name").fill("Slow section navigation");
     await page.getByRole("button", { name: "Create trip" }).click();
     await expect(page.getByRole("heading", { name: "Expenses", exact: true })).toBeVisible();

@@ -8,6 +8,7 @@ test("net balances, accessible external confirmation and stale transfer recovery
   await page.getByLabel("Email", { exact: true }).fill(`balances-${Date.now()}@example.com`);
   await page.getByLabel("Password", { exact: true }).fill("TripTab balances test 123");
   await page.getByRole("button", { name: "Register", exact: true }).click();
+  await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill("Balances confirmation smoke");
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
