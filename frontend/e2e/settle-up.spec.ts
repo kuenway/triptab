@@ -1,4 +1,5 @@
 import { expect, test, Page } from "@playwright/test";
+import { openSection } from "./trip-navigation";
 
 async function register(page: Page, name: string) {
   const email = `${name.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
@@ -28,6 +29,7 @@ test("records Bob's real payment and refreshes the trip", async ({ page }) => {
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
 
+  await openSection(page, "Travelers");
   const travelers = page.getByRole("region", { name: "Travelers", exact: true });
   for (const name of ["Bob", "Charlie"]) {
     await travelers.getByLabel("Traveler name").fill(name);
@@ -35,6 +37,7 @@ test("records Bob's real payment and refreshes the trip", async ({ page }) => {
     await expect(travelers.locator(".traveler-row").filter({ hasText: name })).toBeVisible();
   }
   await expect(travelers.locator(".traveler-row").filter({ hasText: "Alice" })).toContainText("Owner");
+  await openSection(page, "Expenses");
   const expense = page.getByRole("region", { name: "Add an expense", exact: true });
   await expense.getByLabel("Description").fill("Dinner");
   await expense.getByLabel("Amount (NT$)").fill("900");
@@ -43,6 +46,7 @@ test("records Bob's real payment and refreshes the trip", async ({ page }) => {
   for (const name of ["Alice", "Bob", "Charlie"]) await expense.getByRole("checkbox", { name, exact: true }).check();
   await expense.getByRole("button", { name: "Add expense" }).click();
 
+  await openSection(page, "Balances");
   const suggestions = page.getByRole("region", { name: "Suggested payments", exact: true });
   const bobSuggestion = suggestions.locator(".suggestion-item").filter({ hasText: "Bob → Alice" });
   await expect(bobSuggestion).toContainText("NT$300");
@@ -110,12 +114,14 @@ test("edits and deletes an expense while keeping previous versions in history", 
   await page.getByLabel("Trip name").fill(`Edit/history smoke ${Date.now()}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
+  await openSection(page, "Travelers");
   const travelers = page.getByRole("region", { name: "Travelers", exact: true });
   for (const name of ["Bob", "Charlie"]) {
     await travelers.getByLabel("Traveler name").fill(name);
     await travelers.getByRole("button", { name: "Add traveler" }).click();
     await expect(travelers.locator(".traveler-row").filter({ hasText: name })).toBeVisible();
   }
+  await openSection(page, "Expenses");
   const form = page.getByRole("region", { name: "Add an expense", exact: true });
   await form.getByLabel("Description").fill("Dinner");
   await form.getByLabel("Amount (NT$)").fill("900");
@@ -123,9 +129,11 @@ test("edits and deletes an expense while keeping previous versions in history", 
   await form.getByLabel("When did it happen?").fill("2026-10-03T12:00");
   for (const name of ["Alice", "Bob", "Charlie"]) await form.getByRole("checkbox", { name, exact: true }).check();
   await form.getByRole("button", { name: "Add expense" }).click();
+  const tripUrl = page.url();
+  await openSection(page, "Balances");
   const balances = page.getByRole("region", { name: "Balances", exact: true });
   await expect(balances.locator(".balance-row").filter({ hasText: "Alice" })).toContainText("gets back NT$600");
-  const tripUrl = page.url();
+  await openSection(page, "Expenses");
   const region = page.getByRole("region", { name: "Current expenses", exact: true });
   const current = region.getByRole("group", { name: "Current expenses", exact: true });
   await current.getByRole("button", { name: "Edit", exact: true }).click();
@@ -156,6 +164,7 @@ test("edits and deletes an expense while keeping previous versions in history", 
   await expect(original.getByRole("link", { name: "Replaced by another expense · NT$990" })).toBeVisible();
   await expect(original.getByRole("button")).toHaveCount(0);
   await original.getByRole("link", { name: "Replaced by another expense · NT$990" }).click();
+  await openSection(page, "Balances");
   await expect(balances.locator(".balance-row").filter({ hasText: "Alice" })).toContainText("gets back NT$660");
   for (const name of ["Bob", "Charlie"]) await expect(balances.locator(".balance-row").filter({ hasText: name })).toContainText("owes NT$330");
   await page.goto(tripUrl);
@@ -174,8 +183,10 @@ test("edits and deletes an expense while keeping previous versions in history", 
   await expect(current.locator("article")).toHaveCount(0);
   await expect(current).toContainText("No current expenses");
   await expect(region.locator(".section-heading .count")).toHaveText("0");
+  await openSection(page, "Balances");
   await expect(balances.locator(".balance-row").filter({ hasText: "Alice" })).toContainText("settled");
   for (const name of ["Bob", "Charlie"]) await expect(balances.locator(".balance-row").filter({ hasText: name })).toContainText("settled");
+  await openSection(page, "Expenses");
   await region.getByText("Show expense history (2)").click();
   await expect(history.locator("article")).toHaveCount(2);
   await expect(history).toContainText("Duplicate dinner entry");

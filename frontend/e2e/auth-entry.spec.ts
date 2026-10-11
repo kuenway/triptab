@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openSection } from "./trip-navigation";
 
 test("auth entry stays exclusive while checking, fits mobile, and resumes an invitation after login", async ({ page, browser }, testInfo) => {
   let release!: () => void;
@@ -48,6 +49,7 @@ test("auth entry stays exclusive while checking, fits mobile, and resumes an inv
   await page.unroute("**/api/v1/auth/me");
   await page.getByLabel("Trip name").fill(`Auth invitation ${suffix}`);
   await page.getByRole("button", { name: "Create trip" }).click();
+  await openSection(page, "Travelers");
   await page.getByLabel("Traveler name").fill("Bob");
   await page.getByRole("button", { name: "Add traveler" }).click();
   await page.getByRole("button", { name: "Invite" }).click();

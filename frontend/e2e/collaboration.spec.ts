@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openSection } from "./trip-navigation";
 
 test("Bob claims his existing guest identity and Alice sees their shared ledger", async ({ page, browser }, testInfo) => {
   await page.setViewportSize({ width: 375, height: 812 });
@@ -20,6 +21,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
   const tripUrl = page.url();
   const tripId = tripUrl.split("/").pop()!;
+  await openSection(page, "Travelers");
   const travelers = page.getByRole("region", { name: "Travelers", exact: true });
   for (const name of ["Bob", "Charlie", "Unused Guest"]) {
     await travelers.getByLabel("Traveler name").fill(name);
@@ -71,6 +73,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   expect(unavailable.status()).toBe(404);
   const beforeMembers = await (await page.request.get(`/api/v1/groups/${tripId}/members`)).json();
   const bobId = beforeMembers.find((m: { display_name: string }) => m.display_name === "Bob").id;
+  await openSection(page, "Expenses");
   const form = page.getByRole("region", { name: "Add an expense", exact: true });
   const aliceId = beforeMembers.find((m: { display_name: string }) => m.display_name === "Alice").id;
   await expect(form.getByLabel("Paid by")).toHaveValue(aliceId);
@@ -83,8 +86,10 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   await form.getByRole("button", { name: "Add expense" }).click();
   await expect(page.getByRole("region", { name: "Current expenses", exact: true })).toContainText("Bob's pre-invitation hotel");
   const before = await (await page.request.get(`/api/v1/groups/${tripId}/expenses`)).json();
+  await openSection(page, "Balances");
   const balances = page.getByRole("region", { name: "Balances", exact: true });
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$600");
+  await openSection(page, "Travelers");
   const bobRow = travelers.getByRole("group", { name: "Invitation for Bob", exact: true });
   await bobRow.getByRole("button", { name: "Remove traveler" }).click();
   await bobRow.getByRole("button", { name: "Confirm removal" }).click();
@@ -119,6 +124,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await bob.getByRole("button", { name: "Join as Bob" }).click();
     await expect(bob).toHaveURL(tripUrl);
     expect(new URL(bob.url()).hash).toBe("");
+    await openSection(bob, "Travelers");
     await expect(bob.getByRole("region", { name: "Travelers", exact: true }).getByRole("group", { name: "Invitation for Bob", exact: true })).toContainText("Member");
     const members = await (await bob.request.get(`/api/v1/groups/${tripId}/members`)).json();
     expect(members).toHaveLength(3);
@@ -130,6 +136,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await expect(bobTravelers.locator(".traveler-row").filter({ hasText: "Charlie" })).toContainText("Guest");
     await expect(bobTravelers.getByRole("button", { name: "Invite" })).toHaveCount(0);
     expect(await (await bob.request.get(`/api/v1/groups/${tripId}/expenses`)).json()).toEqual(before);
+    await openSection(bob, "Balances");
     await expect(bob.getByRole("region", { name: "Balances", exact: true }).locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$600");
     await bob.getByRole("link", { name: "All trips", exact: false }).click();
     await expect(bob.getByRole("link", { name: new RegExp(`Japan 2027 ${suffix}`) })).toBeVisible();
@@ -153,7 +160,9 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     const charlieRow = travelers.getByRole("group", { name: "Invitation for Charlie", exact: true });
     await expect(charlieRow.getByRole("button", { name: "Invite" })).toBeVisible();
     expect(await charlieRow.evaluate((row) => row.scrollWidth <= row.clientWidth)).toBe(true);
+    await openSection(page, "Expenses");
     await expect(page.getByRole("region", { name: "Current expenses", exact: true })).toContainText("Bob records Charlie's taxi");
+    await openSection(page, "Balances");
     await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$540");
     await expect(balances.locator(".balance-row").filter({ hasText: "Charlie" })).toContainText("owes NT$240");
     expect(requests.every((url) => !url.includes(parsed.hash.slice(7)))).toBe(true);

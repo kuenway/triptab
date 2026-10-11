@@ -1,15 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
+import { FormEvent, useId, useRef, useState } from "react";
 
-import { api, ApiError, Balances, Expense, ExpenseInput, Settlement, SettlementSuggestions, Traveler, Trip } from "../lib/api";
+import { api, ApiError, Balances, Expense, ExpenseInput, Traveler } from "../lib/api";
 import { PaymentForm, PaymentHistory, SuggestedPayments } from "./payments";
 
 import { AuditDetails, FinancialActions, FinancialHistory, localDateTime } from "./financial-history";
 
-import { AccountMenu, useAuth } from "./auth";
+import { useAuth } from "./auth";
 import { TravelerInvitations } from "./invitations";
+import { useTrip } from "./trip-shell";
 
 const money = (amount: number) => `NT$${new Intl.NumberFormat("en-US").format(amount)}`;
 
@@ -219,79 +219,35 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
   );
 }
 
-export function TripDashboard({ tripId }: { tripId: string }) {
+export function TripSection({ section }: { section: "expenses" | "balances" | "travelers" | "history" }) {
   const { user } = useAuth();
-  const [trip, setTrip] = useState<Trip | null>(null);
-  const [travelers, setTravelers] = useState<Traveler[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [balances, setBalances] = useState<Balances | null>(null);
-  const [suggestions, setSuggestions] = useState<SettlementSuggestions | null>(null);
-  const [suggestionsError, setSuggestionsError] = useState("");
-  const [payments, setPayments] = useState<Settlement[] | null>(null);
-  const [paymentsError, setPaymentsError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [notFound, setNotFound] = useState(false);
-
-  const load = useCallback(async () => {
-    setSuggestions(null);
-    setSuggestionsError("");
-    setPayments(null);
-    setPaymentsError("");
-    try {
-      const [nextTrip, nextTravelers, nextExpenses, nextBalances, nextSuggestions, nextPayments] = await Promise.all([
-        api.getTrip(tripId), api.listTravelers(tripId), api.listExpenses(tripId), api.getBalances(tripId),
-        api.getSettlementSuggestions(tripId).catch((cause: Error) => {
-          setSuggestionsError(cause.message);
-          return null;
-        }),
-        api.listSettlements(tripId).catch((cause: Error) => {
-          setPaymentsError(cause.message);
-          return null;
-        }),
-      ]);
-      setTrip(nextTrip);
-      setTravelers(nextTravelers);
-      setExpenses(nextExpenses);
-      setBalances(nextBalances);
-      setSuggestions(nextSuggestions);
-      setPayments(nextPayments);
-      setError("");
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.status === 404) setNotFound(true);
-      else setError((cause as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [tripId]);
-
-  useEffect(() => { void Promise.resolve().then(load); }, [load]);
-
+  const { trip, travelers, expenses, balances, suggestions, suggestionsError, payments, paymentsError, load } = useTrip();
+  const tripId = trip.id;
   const owner = travelers.some((traveler) => traveler.user_id === user?.id && traveler.role === "owner");
 
-  if (loading) return <main className="shell"><p role="status">Loading trip…</p></main>;
-  if (notFound) return <main className="shell"><p className="eyebrow">TRIP NOT FOUND</p><h1>We couldn’t find that trip.</h1><Link href="/">← Back to trips</Link></main>;
-  if (!trip) return <main className="shell"><p className="alert" role="alert">{error || "Could not load this trip."}</p><button onClick={() => void load()}>Try again</button><p><Link href="/">← Back to trips</Link></p></main>;
+  if (section === "expenses") return <div className="trip-section trip-columns">
+    <section className="panel" aria-labelledby="add-expense-heading"><div className="section-heading"><h2 id="add-expense-heading">Add an expense</h2></div><ExpenseForm tripId={tripId} travelers={travelers} onCreated={() => void load()} /></section>
+    <section className="panel" aria-labelledby="expenses-heading"><div className="section-heading"><h2 id="expenses-heading">Current expenses</h2><span className="count">{expenses.filter((expense) => expense.status === "active").length}</span></div><ExpenseHistory expenses={expenses} travelers={travelers} tripId={tripId} onChanged={load} /></section>
+  </div>;
 
-  return (
-    <main className="shell">
-      <header className="site-header"><Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link><div className="account-menu"><Link className="back-link" href="/">← All trips</Link><AccountMenu /></div></header>
-      <div className="page-intro trip-intro"><p className="eyebrow">YOUR TRIP</p><h1>{trip.name}</h1><p>Shared expenses in TWD · {travelers.length} {travelers.length === 1 ? "traveler" : "travelers"}</p></div>
-      {error ? <p className="alert" role="alert">{error}</p> : null}
-      <div className="dashboard-grid">
-        <div className="dashboard-main">
-          <section className="panel" aria-labelledby="add-expense-heading"><div className="section-heading"><h2 id="add-expense-heading">Add an expense</h2></div><ExpenseForm tripId={tripId} travelers={travelers} onCreated={() => void load()} /></section>
-          <section className="panel" aria-labelledby="expenses-heading"><div className="section-heading"><h2 id="expenses-heading">Current expenses</h2><span className="count">{expenses.filter((expense) => expense.status === "active").length}</span></div><ExpenseHistory expenses={expenses} travelers={travelers} tripId={tripId} onChanged={load} /></section>
-          <section className="panel" aria-labelledby="record-payment-heading"><div className="section-heading"><h2 id="record-payment-heading">Record payment</h2></div><PaymentForm tripId={tripId} travelers={travelers} onRecorded={load} /></section>
-          <section className="panel" aria-labelledby="payment-history-heading"><div className="section-heading"><h2 id="payment-history-heading">Current payments</h2></div>{paymentsError ? <p className="alert" role="alert">{paymentsError}</p> : payments ? <PaymentHistory payments={payments} travelers={travelers} tripId={tripId} onChanged={load} /> : <p className="muted" role="status">Loading payment history…</p>}</section>
-        </div>
-        <div className="dashboard-side">
-          <section className="panel" aria-labelledby="balances-heading"><div className="section-heading"><h2 id="balances-heading">Balances</h2></div><p className="muted section-caption">Who should receive and who owes.</p>{balances ? <BalanceList balances={balances} /> : <p className="muted">Loading balances…</p>}</section>
-          <section className="panel" aria-labelledby="suggested-payments-heading"><div className="section-heading"><h2 id="suggested-payments-heading">Suggested payments</h2></div><p className="muted section-caption">Mark as paid only after a payment happened outside TripTab.</p>{suggestionsError ? <p className="alert" role="alert">{suggestionsError}</p> : suggestions ? <SuggestedPayments tripId={tripId} travelers={travelers} suggestions={suggestions} onRecorded={load} /> : <p className="muted" role="status">Loading suggested payments…</p>}</section>
-          <section className="panel" aria-labelledby="travelers-heading"><div className="section-heading"><h2 id="travelers-heading">Travelers</h2><span className="count">{travelers.length}</span></div><TravelerInvitations tripId={tripId} travelers={travelers} canManage={owner} onChanged={load} />{owner ? <TravelerForm tripId={tripId} onAdded={() => void load()} /> : null}</section>
-        </div>
-      </div>
-      <p className="dev-note">Private trip · Financial history is preserved</p>
-    </main>
-  );
+  if (section === "balances") return <div className="trip-section trip-columns">
+    <div className="dashboard-main">
+      <section className="panel" aria-labelledby="balances-heading"><div className="section-heading"><h2 id="balances-heading">Balances</h2></div><p className="muted section-caption">Who should receive and who owes.</p>{balances ? <BalanceList balances={balances} /> : <p className="muted">Loading balances…</p>}</section>
+      <section className="panel" aria-labelledby="suggested-payments-heading"><div className="section-heading"><h2 id="suggested-payments-heading">Suggested payments</h2></div><p className="muted section-caption">Mark as paid only after a payment happened outside TripTab.</p>{suggestionsError ? <p className="alert" role="alert">{suggestionsError}</p> : suggestions ? <SuggestedPayments tripId={tripId} travelers={travelers} suggestions={suggestions} onRecorded={load} /> : <p className="muted" role="status">Loading suggested payments…</p>}</section>
+    </div>
+    <div className="dashboard-side">
+      <section className="panel" aria-labelledby="record-payment-heading"><div className="section-heading"><h2 id="record-payment-heading">Record payment</h2></div><PaymentForm tripId={tripId} travelers={travelers} onRecorded={load} /></section>
+      <section className="panel" aria-labelledby="payment-history-heading"><div className="section-heading"><h2 id="payment-history-heading">Current payments</h2></div>{paymentsError ? <p className="alert" role="alert">{paymentsError}</p> : payments ? <PaymentHistory payments={payments} travelers={travelers} tripId={tripId} onChanged={load} /> : <p className="muted" role="status">Loading payment history…</p>}</section>
+    </div>
+  </div>;
+
+  if (section === "travelers") return <div className="trip-section">
+    <section className="panel" aria-labelledby="travelers-heading"><div className="section-heading"><h2 id="travelers-heading">Travelers</h2><span className="count">{travelers.length}</span></div><TravelerInvitations tripId={tripId} travelers={travelers} canManage={owner} onChanged={load} />{owner ? <TravelerForm tripId={tripId} onAdded={() => void load()} /> : null}</section>
+  </div>;
+
+  return <div className="trip-section">
+    <h2>History</h2>
+    <section className="panel" aria-labelledby="expense-history-heading"><div className="section-heading"><h2 id="expense-history-heading">Expense history</h2></div><ExpenseHistory expenses={expenses} travelers={travelers} /></section>
+    <section className="panel" aria-labelledby="all-payment-history-heading"><div className="section-heading"><h2 id="all-payment-history-heading">Payment history</h2></div>{paymentsError ? <p className="alert" role="alert">{paymentsError}</p> : payments ? <PaymentHistory payments={payments} travelers={travelers} /> : <p className="muted" role="status">Loading payment history…</p>}</section>
+  </div>;
 }

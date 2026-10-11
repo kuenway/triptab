@@ -5,12 +5,13 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { AuthProvider, AuthForm, AccountMenu, RequireAuth } from "../components/auth";
 
 import Home from "../app/page";
-import { BalanceList, ExpenseForm, ExpenseHistory, TravelerForm, TripDashboard } from "../components/trip-dashboard";
+import { BalanceList, ExpenseForm, ExpenseHistory, TravelerForm, TripSection } from "../components/trip-dashboard";
+import { TripShell } from "../components/trip-shell";
 import { PaymentForm, PaymentHistory, SuggestedPayments } from "../components/payments";
 import { api, ApiError, Expense, Settlement, SettlementSuggestions, Traveler, Trip } from "../lib/api";
 
 const { push, replace } = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace }), usePathname: () => "/trips/trip-1" }));
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a> }));
 vi.mock("../lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("../lib/api")>();
@@ -23,6 +24,9 @@ vi.mock("../lib/api", async (importOriginal) => {
 const currentUser = { id: "alice-user", email: "alice@example.com", display_name: "Alice", created_at: "2026-10-03T09:00:00Z" };
 const authState = { user: currentUser, csrf_token: "csrf-token" };
 function render(ui: ReactNode) { return rtlRender(<AuthProvider>{ui}</AuthProvider>); }
+function TripDashboard({ tripId, section = "expenses" }: { tripId: string; section?: "expenses" | "balances" | "travelers" }) {
+  return <TripShell tripId={tripId}><TripSection section={section} /></TripShell>;
+}
 
 const trip: Trip = { id: "trip-1", name: "Tokyo Weekend", currency: "TWD", currency_scale: 0 };
 const travelers: Traveler[] = [
@@ -187,7 +191,7 @@ function mockDashboard() {
 it("loads backend suggestions into the trip with explicit payment actions", async () => {
   mockDashboard();
   vi.mocked(api.getSettlementSuggestions).mockResolvedValue(suggestions);
-  render(<TripDashboard tripId={trip.id} />);
+  render(<TripDashboard tripId={trip.id} section="balances" />);
   expect(await screen.findByText("Bob → Alice")).toBeTruthy();
   expect(screen.getByRole("heading", { name: "Suggested payments" })).toBeTruthy();
   expect(screen.getByText("Mark as paid only after a payment happened outside TripTab.")).toBeTruthy();
@@ -198,7 +202,7 @@ it("loads backend suggestions into the trip with explicit payment actions", asyn
 it("shows suggestion API errors without claiming everyone is settled", async () => {
   mockDashboard();
   vi.mocked(api.getSettlementSuggestions).mockRejectedValue(new ApiError("Could not load suggested payments.", 500));
-  render(<TripDashboard tripId={trip.id} />);
+  render(<TripDashboard tripId={trip.id} section="balances" />);
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not load suggested payments.");
   expect(screen.getByRole("heading", { name: "Suggested payments" })).toBeTruthy();
   expect(screen.queryByText("Everyone is settled up.")).toBeNull();
@@ -208,11 +212,13 @@ it("refreshes suggestions from the backend after an expense is saved", async () 
   mockDashboard();
   vi.mocked(api.getSettlementSuggestions).mockResolvedValueOnce(suggestions).mockResolvedValueOnce({ ...suggestions, suggestions: [] });
   vi.mocked(api.addExpense).mockResolvedValue(expense);
-  render(<TripDashboard tripId={trip.id} />);
-  expect(await screen.findByText("Bob → Alice")).toBeTruthy();
+  const view = render(<TripDashboard tripId={trip.id} />);
+  await screen.findByRole("region", { name: "Add an expense" });
   fillExpense();
   fireEvent.click(screen.getByLabelText("Bob", { selector: "input[type=checkbox]" }));
   fireEvent.click(screen.getByRole("button", { name: "Add expense" }));
+  await waitFor(() => expect(api.getSettlementSuggestions).toHaveBeenCalledTimes(2));
+  view.rerender(<AuthProvider><TripDashboard tripId={trip.id} section="balances" /></AuthProvider>);
   expect(await screen.findByText("Everyone is settled up.")).toBeTruthy();
   expect(api.getSettlementSuggestions).toHaveBeenCalledTimes(2);
   expect(screen.queryByText("Bob → Alice")).toBeNull();
@@ -333,7 +339,7 @@ it("refreshes backend balances, suggestions and history after confirming a payme
   vi.mocked(api.getSettlementSuggestions).mockResolvedValueOnce(initial).mockResolvedValueOnce({ ...initial, suggestions: [initial.suggestions[1]] });
   vi.mocked(api.listSettlements).mockResolvedValueOnce([]).mockResolvedValueOnce([payment]);
   vi.mocked(api.recordSettlement).mockResolvedValue(payment);
-  render(<TripDashboard tripId={trip.id} />);
+  render(<TripDashboard tripId={trip.id} section="balances" />);
   await screen.findByText("Bob → Alice");
   fireEvent.click((await screen.findAllByRole("button", { name: "Mark as paid" }))[0]);
   fireEvent.click(within(screen.getByRole("group", { name: "Record payment?" })).getByRole("button", { name: "Record payment" }));
@@ -351,7 +357,7 @@ it("refreshes backend balances, suggestions and history after confirming a payme
 it("shows payment history read errors without presenting an empty history", async () => {
   mockDashboard();
   vi.mocked(api.listSettlements).mockRejectedValue(new ApiError("Could not load payment history.", 500));
-  render(<TripDashboard tripId={trip.id} />);
+  render(<TripDashboard tripId={trip.id} section="balances" />);
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not load payment history.");
   expect(screen.queryByText("No payments recorded yet.")).toBeNull();
 });
@@ -403,7 +409,7 @@ it.each(["expense", "payment"] as const)("confirms %s void and refreshes the aut
   vi.mocked(api.getBalances).mockResolvedValueOnce({ group_id: trip.id, currency: "TWD", balances: [{ member_id: "alice", display_name: "Alice", amount: 600 }] }).mockResolvedValueOnce({ group_id: trip.id, currency: "TWD", balances: [{ member_id: "alice", display_name: "Alice", amount: 0 }] });
   vi.mocked(api.voidExpense).mockResolvedValue({ ...expense, status: "voided" });
   vi.mocked(api.voidSettlement).mockResolvedValue({ ...payment, status: "voided" });
-  render(<TripDashboard tripId={trip.id} />);
+  const view = render(<TripDashboard tripId={trip.id} section={kind === "expense" ? "expenses" : "balances"} />);
   const history = within(await screen.findByRole("region", { name: kind === "expense" ? "Current expenses" : "Current payments" }));
   fireEvent.click(history.getByRole("button", { name: `Delete ${kind}` }));
   const confirmation = within(history.getByRole("form", { name: `Delete ${kind}` }));
@@ -412,6 +418,7 @@ it.each(["expense", "payment"] as const)("confirms %s void and refreshes the aut
   fireEvent.click(confirmation.getByRole("button", { name: `Confirm delete ${kind}` }));
   await waitFor(() => expect(kind === "expense" ? api.voidExpense : api.voidSettlement).toHaveBeenCalledWith(trip.id, kind === "expense" ? expense.id : payment.id, "Wrong record"));
   await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(2));
+  view.rerender(<AuthProvider><TripDashboard tripId={trip.id} section="balances" /></AuthProvider>);
   expect(await screen.findByText("Everyone is settled up.")).toBeTruthy();
   expect(within(screen.getByRole("region", { name: "Balances" })).getByText("settled")).toBeTruthy();
   expect(api.listExpenses).toHaveBeenCalledTimes(2);
@@ -425,13 +432,14 @@ it.each(["expense", "payment"] as const)("refreshes balances, suggestions and bo
   vi.mocked(api.correctExpense).mockResolvedValue({ ...expense, id: "replacement" });
   vi.mocked(api.correctSettlement).mockResolvedValue({ ...payment, id: "replacement" });
   vi.mocked(api.getSettlementSuggestions).mockResolvedValueOnce(suggestions).mockResolvedValueOnce({ ...suggestions, suggestions: [] });
-  render(<TripDashboard tripId={trip.id} />);
+  const view = render(<TripDashboard tripId={trip.id} section={kind === "expense" ? "expenses" : "balances"} />);
   const history = within(await screen.findByRole("region", { name: kind === "expense" ? "Current expenses" : "Current payments" }));
   fireEvent.click(history.getByRole("button", { name: "Edit" }));
   const editor = within(history.getByRole("group", { name: `Edit ${kind}` }));
   fireEvent.change(editor.getByLabelText("Reason"), { target: { value: "Receipt" } });
   fireEvent.click(editor.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(2));
+  view.rerender(<AuthProvider><TripDashboard tripId={trip.id} section="balances" /></AuthProvider>);
   expect(await screen.findByText("Everyone is settled up.")).toBeTruthy();
   expect(api.listExpenses).toHaveBeenCalledTimes(2);
   expect(api.listSettlements).toHaveBeenCalledTimes(2);
@@ -629,12 +637,13 @@ it("shows owner and guest roles and hides owner-only actions from normal members
   mockDashboard();
   vi.mocked(api.getMe).mockResolvedValue({ ...authState, user: { ...currentUser, id: "bob-user", display_name: "Bob" } });
   vi.mocked(api.listTravelers).mockResolvedValue(travelers.map((traveler) => traveler.id === "bob" ? { ...traveler, user_id: "bob-user" } : traveler));
-  render(<TripDashboard tripId={trip.id} />);
+  const view = render(<TripDashboard tripId={trip.id} section="travelers" />);
   const region = within(await screen.findByRole("region", { name: "Travelers" }));
   expect(region.getByText("Owner")).toBeTruthy();
   expect(region.getByText("Member")).toBeTruthy();
   expect(region.getByText("Guest")).toBeTruthy();
   expect(region.queryByRole("button", { name: "Add traveler" })).toBeNull();
+  view.rerender(<AuthProvider><TripDashboard tripId={trip.id} /></AuthProvider>);
   expect(within(screen.getByRole("region", { name: "Current expenses" })).queryByRole("button", { name: "Edit" })).toBeNull();
 });
 

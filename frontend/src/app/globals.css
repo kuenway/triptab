@@ -140,3 +140,30 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .auth-status > p { margin-bottom: 0; }
 .auth-shell a:focus-visible { outline: 2px solid var(--teal); outline-offset: 4px; }
 .account-menu { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }
+
+/* Trip routes share navigation; existing section and auth styles stay local. */
+.trip-shell { max-width: 1104px; }
+.trip-shell .site-header { min-height: 72px; height: auto; padding: 12px 0; gap: 16px; flex-wrap: wrap; }
+.trip-shell .account-menu { min-width: 0; overflow-wrap: anywhere; }
+.trip-heading { padding: 24px 0 20px; }
+.trip-heading .back-link { display: inline-block; margin-bottom: 12px; }
+.trip-heading h1 { font-size: clamp(1.75rem, 3vw, 2.25rem); overflow-wrap: anywhere; }
+.trip-heading p { margin: 0; }
+.trip-navigation { display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+.trip-navigation a { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 10px 16px; border-bottom: 3px solid transparent; }
+.trip-navigation a[aria-current="page"] { border-color: var(--teal); color: var(--teal-dark); font-weight: 700; background: #e5f4ef; }
+.trip-navigation svg { display: none; }
+.trip-shell a:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.trip-section { display: grid; gap: 24px; }
+.trip-columns { grid-template-columns: minmax(0, 1.25fr) minmax(360px, 1fr); align-items: start; }
+.trip-section > *, .trip-section .panel { min-width: 0; }
+
+@media (max-width: 800px) {
+  .trip-shell { padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px)); }
+  .trip-shell .site-header { min-height: 64px; }
+  .trip-heading { padding: 20px 0; }
+  .trip-columns { grid-template-columns: 1fr; }
+  .trip-navigation { position: fixed; z-index: 10; bottom: 0; left: 0; right: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0; border-top: 1px solid var(--line); border-bottom: 0; background: white; padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); }
+  .trip-navigation a { flex-direction: column; gap: 4px; min-height: 56px; padding: 5px 2px; font-size: .8rem; border-radius: 8px; }
+  .trip-navigation svg { display: block; }
+}

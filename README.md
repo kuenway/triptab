@@ -66,8 +66,10 @@ in `splitwise_postgres_data`; the new `triptab_postgres_data` volume starts empt
 See [local naming transition](docs/persistence.md#triptab-local-naming-and-preserved-legacy-data)
 before starting Compose if an older container already owns port 5433.
 
-In the browser, create a trip, add travelers, record an Equal or Exact expense,
-then read its stored allocations and the group's balances. Fresh Equal expenses
+In the browser, create a trip, open **Travelers** to add guests, then return to
+**Expenses** to record an Equal or Exact expense. Open **Balances** to view net
+balances, suggested payments, payment recording, and current payments.
+Fresh Equal expenses
 select all current travelers and default Paid by to your
 linked traveler. You can change the payer or uncheck participants; edits persist
 through ordinary form changes. Switching Exact to Equal initializes all travelers,
@@ -81,6 +83,25 @@ TripTab records the payment; it does not transfer money. The separate **Record
 payment** form accepts custom amounts, including partial payments and overpayments.
 Recorded payments appear in **Payment history**, and balances and suggestions
 refresh from the backend. Suggestions themselves remain unpersisted.
+
+## Trip navigation
+
+Every Trip shares a compact header and four section links. Desktop uses horizontal
+navigation; mobile uses a bottom bar with space reserved below page content.
+These are real routes, so direct links, reloads, and browser back/forward retain
+the selected section:
+
+| Route | Section |
+| --- | --- |
+| `/trips/{id}` | Expenses; canonical Trip and invitation-acceptance destination |
+| `/trips/{id}/balances` | Balances, suggestions, and payment recording/history |
+| `/trips/{id}/travelers` | Travelers and Owner-only invitation/removal management |
+| `/trips/{id}/history` | Read-only existing expense/payment lists and audit details |
+
+Expense/payment edit and void controls stay in their original functional sections,
+including expandable history and version links. History reuses that presentation;
+it is not a new activity timeline. Expense entry remains an expanded form. This
+navigation phase does not change accounting, permissions, or API contracts.
 
 ## Checks
 
@@ -111,9 +132,10 @@ For database migration, transaction, and integration-test commands, see
 
 ## Browser smoke test
 
-Four Playwright Chromium flows cover registration, owner and guest travelers,
+Playwright Chromium flows cover registration, owner and guest travelers,
 expenses, recorded payments, editing/deletion UX, persisted audit history,
-logout/login, Guest claiming, shared ledgers and isolation between accounts.
+logout/login, Guest claiming, shared ledgers, isolation between accounts, and
+Trip section navigation across reloads, browser history, and mobile/desktop layouts.
 They use a separate local `*_e2e_test` database in the
 Compose PostgreSQL instance; it refuses the normal development or integration-test
 database. The test writes real records, so use this dedicated database only for

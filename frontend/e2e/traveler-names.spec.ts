@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openSection } from "./trip-navigation";
 
 test("traveler duplicates are rejected within one Trip while unique and cross-Trip names work", async ({ page }) => {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -10,6 +11,7 @@ test("traveler duplicates are rejected within one Trip while unique and cross-Tr
   await expect(page.getByLabel("Trip name")).toBeVisible();
   await page.getByLabel("Trip name").fill(`Name integrity ${suffix}`);
   await page.getByRole("button", { name: "Create trip" }).click();
+  await openSection(page, "Travelers");
   const travelers = page.getByRole("region", { name: "Travelers", exact: true });
   const input = travelers.getByLabel("Traveler name");
   await input.fill(" Alice ");
@@ -31,6 +33,7 @@ test("traveler duplicates are rejected within one Trip while unique and cross-Tr
   await page.getByRole("link", { name: "All trips", exact: false }).click();
   await page.getByLabel("Trip name").fill(`Other name integrity ${suffix}`);
   await page.getByRole("button", { name: "Create trip" }).click();
+  await openSection(page, "Travelers");
   await input.fill("Alice");
   await travelers.getByRole("button", { name: "Add traveler" }).click();
   await expect(travelers.getByRole("group", { name: "Invitation for Alice", exact: true })).toBeVisible();

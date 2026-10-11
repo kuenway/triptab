@@ -4,11 +4,12 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 import { AuthForm, AuthProvider } from "../components/auth";
 import { InvitationPage, TravelerInvitations } from "../components/invitations";
-import { TravelerForm, TripDashboard } from "../components/trip-dashboard";
+import { TravelerForm, TripSection } from "../components/trip-dashboard";
+import { TripShell } from "../components/trip-shell";
 import { api, ApiError, TripInvitation, Traveler } from "../lib/api";
 
 const { push, replace } = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace }), usePathname: () => "/trips/trip/travelers" }));
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a> }));
 vi.mock("../lib/api", async (original) => {
   const client = await original<typeof import("../lib/api")>();
@@ -164,7 +165,7 @@ it.each(["owner","member"] as const)("shows invitation management only to %s whe
   vi.mocked(api.listTravelers).mockResolvedValue(role==="owner"?travelers:travelers.map((m)=>m.id==="bob"?{...m,user_id:user.id}:m));
   vi.mocked(api.listExpenses).mockResolvedValue([]);vi.mocked(api.getBalances).mockResolvedValue({group_id:"trip",currency:"TWD",balances:[]});
   vi.mocked(api.listSettlements).mockResolvedValue([]);vi.mocked(api.getSettlementSuggestions).mockResolvedValue({group_id:"trip",currency:"TWD",suggestions:[]});
-  render(<AuthProvider><TripDashboard tripId="trip" /></AuthProvider>);
+  render(<AuthProvider><TripShell tripId="trip"><TripSection section="travelers" /></TripShell></AuthProvider>);
   const region=within(await screen.findByRole("region",{name:"Travelers"}));
   await waitFor(()=>expect(region.queryByRole("button",{name:"Invite"})!==null).toBe(role==="owner"));
   expect(region.getByText(role==="owner"?"Guest":"Member")).toBeTruthy();
