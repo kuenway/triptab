@@ -57,7 +57,7 @@ it.each(["pending", "accepted", "revoked", "expired"] as const)("shows owner %s 
   vi.mocked(api.listInvitations).mockResolvedValue([{ ...invitation, status }]);
   render(<TravelerInvitations canManage={true} tripId="trip" travelers={status === "accepted" ? travelers.map((m) => m.id === "bob" ? { ...m, user_id: user.id } : m) : travelers} />);
   if (status === "accepted") { expect(screen.getByText("Member")).toBeTruthy(); expect(screen.queryByText("Accepted invitation")).toBeNull(); }
-  else expect(await screen.findByText(`${status.charAt(0).toUpperCase()}${status.slice(1)} invitation`)).toBeTruthy();
+  else expect(await screen.findByText(status === "pending" ? "Invitation pending" : `${status.charAt(0).toUpperCase()}${status.slice(1)} invitation`)).toBeTruthy();
   expect(screen.queryByLabelText("Invitation link")).toBeNull();
   if (status !== "pending") expect(screen.queryByRole("button", { name: "Revoke invitation" })).toBeNull();
 });
@@ -77,7 +77,9 @@ it("shows creation, listing and clipboard errors safely", async () => {
   vi.mocked(api.createInvitation).mockRejectedValueOnce(new ApiError("traveler is already account-linked",409)).mockResolvedValue({ ...invitation,token });
   Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:vi.fn().mockRejectedValue(new Error("Denied"))}});
   render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} />);
-  expect(await screen.findByRole("alert")).toHaveProperty("textContent","Could not load invitations. Try refreshing the trip.");
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent","Could not load invitations. Please retry.");
+  fireEvent.click(screen.getByRole("button",{name:"Retry invitations"}));
+  await waitFor(()=>expect(screen.getByRole("button",{name:"Invite"}).hasAttribute("disabled")).toBe(false));
   fireEvent.click(screen.getByRole("button",{name:"Invite"}));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent","traveler is already account-linked");
   fireEvent.click(screen.getByRole("button",{name:"Invite"}));
@@ -166,9 +168,9 @@ it.each(["owner","member"] as const)("shows invitation management only to %s whe
   vi.mocked(api.listExpenses).mockResolvedValue([]);vi.mocked(api.getBalances).mockResolvedValue({group_id:"trip",currency:"TWD",balances:[]});
   vi.mocked(api.listSettlements).mockResolvedValue([]);vi.mocked(api.getSettlementSuggestions).mockResolvedValue({group_id:"trip",currency:"TWD",suggestions:[]});
   render(<AuthProvider><TripShell tripId="trip"><TripSection section="travelers" /></TripShell></AuthProvider>);
-  const region=within(await screen.findByRole("region",{name:"Travelers"}));
+  const region=within(await screen.findByRole("region",{name:"Tripmates"}));
   await waitFor(()=>expect(region.queryByRole("button",{name:"Invite"})!==null).toBe(role==="owner"));
-  expect(region.getByText(role==="owner"?"Guest":"Member")).toBeTruthy();
+  expect(region.getByText(role==="owner"?"Guest":"Member · You")).toBeTruthy();
   if(role==="member")expect(api.listInvitations).not.toHaveBeenCalled();
 });
 
@@ -182,19 +184,19 @@ it("shows an identity conflict without clearing the pending invitation or naviga
 it("keeps one traveler row, with owner-only Guest actions and no accepted invitation noise", async () => {
   vi.mocked(api.listInvitations).mockResolvedValue([invitation]);
   const view = render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} />);
-  const row = within(screen.getByRole("group", { name: "Invitation for Bob" }));
-  expect(await row.findByText("Pending invitation")).toBeTruthy();
+  const row = within(screen.getByRole("group", { name: "Tripmate Bob" }));
+  expect(await row.findByText("Invitation pending")).toBeTruthy();
   expect(screen.getAllByText("Bob")).toHaveLength(1);
   expect(row.getByText("Guest")).toBeTruthy();
-  const removal = row.getByRole("button", { name: "Remove traveler" });
+  const removal = row.getByRole("button", { name: /^Remove tripmate / });
   expect(removal.textContent).toBe("");
-  expect(removal.getAttribute("title")).toBe("Remove traveler");
+  expect(removal.getAttribute("title")).toBe("Remove Bob from this Trip");
   expect(removal.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   expect(row.getByRole("button", { name: "New link" })).toBeTruthy();
   expect(row.queryByRole("button", { name: "Invite" })).toBeNull();
   expect(row.getByRole("button", { name: "Revoke invitation" }).textContent).toBe("Revoke");
   expect(row.queryByText("Remove traveler")).toBeNull();
-  const owner = within(screen.getByRole("group", { name: "Invitation for Alice" }));
+  const owner = within(screen.getByRole("group", { name: "Tripmate Alice" }));
   expect(owner.queryByRole("button")).toBeNull();
   view.rerender(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers.map((m) => m.id === "bob" ? { ...m, user_id: user.id } : m)} />);
   expect(row.getByText("Member")).toBeTruthy();
@@ -212,11 +214,11 @@ it("requires confirmation, can cancel and refreshes after removing an unused Gue
   vi.mocked(api.removeTraveler).mockResolvedValue(undefined);
   const changed = vi.fn().mockResolvedValue(undefined);
   render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} onChanged={changed} />);
-  fireEvent.click(screen.getByRole("button", { name: "Remove traveler" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Remove tripmate / }));
   expect(api.removeTraveler).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Cancel removal" }));
   expect(screen.queryByRole("button", { name: "Confirm removal" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Remove traveler" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Remove tripmate / }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm removal" }));
   await waitFor(() => expect(changed).toHaveBeenCalledOnce());
   expect(api.removeTraveler).toHaveBeenCalledWith("trip", "bob");
@@ -228,12 +230,12 @@ it("shows financial-history rejection without removing the traveler or invitatio
   vi.mocked(api.removeTraveler).mockRejectedValue(new ApiError("This traveler has financial history and cannot be removed.", 409));
   const changed = vi.fn();
   render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} onChanged={changed} />);
-  await screen.findByText("Pending invitation");
-  fireEvent.click(screen.getByRole("button", { name: "Remove traveler" }));
+  await screen.findByText("Invitation pending");
+  fireEvent.click(screen.getByRole("button", { name: /^Remove tripmate / }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm removal" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "This traveler has financial history and cannot be removed.");
   expect(screen.getByText("Bob")).toBeTruthy();
-  expect(screen.getByText("Pending invitation")).toBeTruthy();
+  expect(screen.getByText("Invitation pending")).toBeTruthy();
   expect(changed).not.toHaveBeenCalled();
 });
 
@@ -267,8 +269,8 @@ it("keeps same-named traveler actions and errors attached to UUIDs across row re
   vi.mocked(api.removeTraveler).mockRejectedValueOnce(new ApiError("This traveler has financial history and cannot be removed.", 409)).mockResolvedValue(undefined);
   const changed = vi.fn().mockResolvedValue(undefined);
   const view = render(<TravelerInvitations canManage={true} tripId="trip" travelers={duplicates} onChanged={changed} />);
-  const rows = screen.getAllByRole("group", { name: "Invitation for aaa" });
-  fireEvent.click(within(rows[0]).getByRole("button", { name: "Remove traveler" }));
+  const rows = screen.getAllByRole("group", { name: "Tripmate aaa" });
+  fireEvent.click(within(rows[0]).getByRole("button", { name: /^Remove tripmate / }));
   fireEvent.click(within(rows[0]).getByRole("button", { name: "Confirm removal" }));
   expect(rows[0].getAttribute("aria-busy")).toBe("true");
   expect(rows[1].getAttribute("aria-busy")).toBe("false");
@@ -276,23 +278,23 @@ it("keeps same-named traveler actions and errors attached to UUIDs across row re
   expect(within(rows[1]).queryByRole("alert")).toBeNull();
   expect(api.removeTraveler).toHaveBeenLastCalledWith("trip", "historical");
   view.rerender(<TravelerInvitations canManage={true} tripId="trip" travelers={[duplicates[1], duplicates[0]]} onChanged={changed} />);
-  const reordered = screen.getAllByRole("group", { name: "Invitation for aaa" });
+  const reordered = screen.getAllByRole("group", { name: "Tripmate aaa" });
   expect(within(reordered[0]).queryByRole("alert")).toBeNull();
   expect(within(reordered[1]).getByRole("alert")).toBeTruthy();
-  fireEvent.click(within(reordered[0]).getByRole("button", { name: "Remove traveler" }));
+  fireEvent.click(within(reordered[0]).getByRole("button", { name: /^Remove tripmate / }));
   fireEvent.click(within(reordered[0]).getByRole("button", { name: "Confirm removal" }));
   await waitFor(() => expect(changed).toHaveBeenCalledOnce());
   expect(api.removeTraveler).toHaveBeenLastCalledWith("trip", "unused");
   expect(within(reordered[1]).getByRole("alert")).toBeTruthy();
 });
 
-it("shows backend duplicate errors beside Add traveler and preserves casing/input for correction", async () => {
+it("shows backend duplicate errors beside Add tripmate and preserves casing/input for correction", async () => {
   const added = vi.fn();
   vi.mocked(api.addTraveler).mockRejectedValueOnce(new ApiError('A traveler named "Alice" already exists in this trip.', 409)).mockResolvedValue(travelers[1]);
   const view = render(<TravelerForm tripId="trip" onAdded={added} />);
-  const input = screen.getByLabelText("Traveler name");
+  const input = screen.getByLabelText("Tripmate name");
   fireEvent.change(input, { target: { value: " Alice " } });
-  fireEvent.click(screen.getByRole("button", { name: "Add traveler" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add tripmate" }));
   const error = await screen.findByRole("alert");
   expect(input.closest("form")?.contains(error)).toBe(true);
   expect(input).toHaveProperty("value", " Alice ");
@@ -300,7 +302,7 @@ it("shows backend duplicate errors beside Add traveler and preserves casing/inpu
   expect(added).not.toHaveBeenCalled();
   // The backend, rather than any cross-Trip client cache, owns uniqueness.
   view.rerender(<TravelerForm tripId="other-trip" onAdded={added} />);
-  fireEvent.click(screen.getByRole("button", { name: "Add traveler" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add tripmate" }));
   await waitFor(() => expect(added).toHaveBeenCalledOnce());
   expect(api.addTraveler).toHaveBeenLastCalledWith("other-trip", "Alice");
   expect(input).toHaveProperty("value", "");

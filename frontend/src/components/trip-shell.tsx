@@ -31,7 +31,7 @@ export function useTrip() {
 const destinations = [
   { name: "Expenses", path: "", icon: "M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6M9 12h6" },
   { name: "Balances", path: "/balances", icon: "M12 3v18M5 21h14M4 7h16M6 7l-3 7h6L6 7Zm12 0-3 7h6l-3-7Z" },
-  { name: "Travelers", path: "/travelers", icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.87M15 3.13a4 4 0 0 1 0 7.75M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" },
+  { name: "Tripmates", path: "/travelers", icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.87M15 3.13a4 4 0 0 1 0 7.75M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" },
   { name: "History", path: "/history", icon: "M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7M12 7v5l3 2" },
 ];
 
@@ -91,16 +91,15 @@ export function TripShell({ tripId, children }: { tripId: string; children: Reac
   return <TripContext.Provider value={{ trip, travelers, expenses, balances, suggestions, suggestionsError, payments, paymentsError, load, dataError: error }}>
     <main className="shell trip-shell">
       <header className="site-header"><Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link><AccountMenu /></header>
-      <div className="trip-heading"><Link className="back-link" href="/">← All trips</Link><h1>{trip.name}</h1><p className="muted">{travelers.length} {travelers.length === 1 ? "traveler" : "travelers"} · TWD</p></div>
+      <div className="trip-heading"><Link className="back-link" href="/">← All trips</Link><h1>{trip.name}</h1><p className="muted">{travelers.length} {travelers.length === 1 ? "tripmate" : "tripmates"} · TWD</p></div>
       <nav className="trip-navigation" aria-label="Trip sections">
-        {destinations.map(({ name, path, icon }) => <Link key={name} href={base + path} aria-current={pathname === base + path ? "page" : undefined}>
+        {destinations.map(({ name, path, icon }) => <Link key={name} href={base + path} prefetch={true} aria-current={pathname === base + path ? "page" : undefined}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d={icon} /></svg>
           <span>{name}</span>
         </Link>)}
       </nav>
       {error ? <div><p className="alert" role="alert">{error}</p><button onClick={() => void load()}>Try again</button></div> : null}
       {children}
-      <p className="dev-note">Private trip · Financial history is preserved</p>
     </main>
   </TripContext.Provider>;
 }

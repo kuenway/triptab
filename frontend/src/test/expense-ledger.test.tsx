@@ -31,7 +31,7 @@ afterEach(() => vi.restoreAllMocks());
 it("makes the ledger primary with authoritative balance, UUID payer, stored remainder share, count and collapsed allocations", async () => {
   ledger(); await screen.findByRole("heading", { name: "Dinner" });
   expect(screen.queryByRole("dialog")).toBeNull(); expect(screen.queryByLabelText("Description")).toBeNull();
-  expect(screen.getByText("You paid · 3 travelers")).toBeTruthy(); expect(screen.getByText("Your share NT$34")).toBeTruthy(); expect(screen.getByText("You are owed NT$66")).toBeTruthy();
+  expect(screen.getByText("You paid · 3 tripmates")).toBeTruthy(); expect(screen.getByText("Your share NT$34")).toBeTruthy(); expect(screen.getByText("You are owed NT$66")).toBeTruthy();
   expect(screen.getByRole("link", { name: "View balances →" })).toHaveProperty("href", "http://localhost:3000/trips/trip/balances"); expect(screen.queryByText("Active")).toBeNull();
   const details = screen.getByText("Details", { exact: false }).closest("details")!; expect(details.open).toBe(false); fireEvent.click(details.querySelector("summary")!);
   expect(within(details).getByText("Bob")).toBeTruthy(); expect(within(details).getAllByText("NT$33")).toHaveLength(2);
@@ -41,7 +41,7 @@ it.each([[[], null], [[{ member_id: "alice", amount: 0 }], "Your share NT$0"]] a
 });
 it("never resolves You by matching names or counts all Trip travelers as participants", async () => {
   vi.mocked(api.listTravelers).mockResolvedValue(travelers.map(m => m.id === "bob" ? { ...m, display_name: "Different account name" } : m));
-  vi.mocked(api.listExpenses).mockResolvedValue([{ ...expense, payer_member_id: "bob", splits: [{ member_id: "bob", amount: 100 }] }]); ledger(); expect(await screen.findByText("Different account name paid · 1 traveler")).toBeTruthy(); expect(screen.queryByText(/Your share/)).toBeNull();
+  vi.mocked(api.listExpenses).mockResolvedValue([{ ...expense, payer_member_id: "bob", splits: [{ member_id: "bob", amount: 100 }] }]); ledger(); expect(await screen.findByText("Different account name paid · 1 tripmate")).toBeTruthy(); expect(screen.queryByText(/Your share/)).toBeNull();
 });
 it("groups Today, Yesterday and older dates with deterministic ordering and history-only previous versions", async () => {
   const today = new Date(); today.setHours(12, 0, 0, 0); const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1); const older = new Date(today); older.setDate(today.getDate() - 5);

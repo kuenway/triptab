@@ -144,7 +144,7 @@ async function request<T>(path: string, body?: object, method = body ? "POST" : 
         : Array.isArray(detail)
           ? detail.map((item) => item.msg).filter(Boolean).join("; ")
           : `Request failed (${response.status}).`;
-    throw new ApiError(message || `Request failed (${response.status}).`, response.status);
+    throw new ApiError((message || `Request failed (${response.status}).`).replace(/\btraveler(s)?\b/gi, (_word, plural) => plural ? "tripmates" : "tripmate"), response.status);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;

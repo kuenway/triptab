@@ -77,7 +77,7 @@ export function PaymentForm({ tripId, travelers, onRecorded, onCancel, initialPa
     }
   }
 
-  if (travelers.length < 2) return <p className="muted">Add at least two travelers to record a payment.</p>;
+  if (travelers.length < 2) return <p className="muted">Add at least two tripmates to record a payment.</p>;
 
   return (
     <form onSubmit={submit} className="stack-form">
@@ -86,8 +86,8 @@ export function PaymentForm({ tripId, travelers, onRecorded, onCancel, initialPa
       <p className="muted">TripTab does not transfer money.</p>
       <>
         <div className="two-fields">
-          <div><label htmlFor={`${prefix}-payment-from`}>From traveler</label><select id={`${prefix}-payment-from`} value={fromId} onChange={(event) => setFromId(event.target.value)} disabled={saving} required><option value="">Choose traveler</option>{travelers.map((traveler) => <option key={traveler.id} value={traveler.id}>{traveler.display_name}</option>)}</select></div>
-          <div><label htmlFor={`${prefix}-payment-to`}>To traveler</label><select id={`${prefix}-payment-to`} value={toId} onChange={(event) => setToId(event.target.value)} disabled={saving} required><option value="">Choose traveler</option>{travelers.map((traveler) => <option key={traveler.id} value={traveler.id}>{traveler.display_name}</option>)}</select></div>
+          <div><label htmlFor={`${prefix}-payment-from`}>From tripmate</label><select id={`${prefix}-payment-from`} value={fromId} onChange={(event) => setFromId(event.target.value)} disabled={saving} required><option value="">Choose tripmate</option>{travelers.map((traveler) => <option key={traveler.id} value={traveler.id}>{traveler.display_name}</option>)}</select></div>
+          <div><label htmlFor={`${prefix}-payment-to`}>To tripmate</label><select id={`${prefix}-payment-to`} value={toId} onChange={(event) => setToId(event.target.value)} disabled={saving} required><option value="">Choose tripmate</option>{travelers.map((traveler) => <option key={traveler.id} value={traveler.id}>{traveler.display_name}</option>)}</select></div>
         </div>
         <label htmlFor={`${prefix}-payment-amount`}>Payment amount (NT$)</label><input id={`${prefix}-payment-amount`} type="number" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={saving} required />
       </>

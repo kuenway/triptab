@@ -13,10 +13,10 @@ test("net balances, accessible external confirmation and stale transfer recovery
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
   const tripId = page.url().split("/").pop()!;
   const guest = "Bob with a very long traveler name that wraps on mobile";
-  await openSection(page, "Travelers");
-  await page.getByLabel("Traveler name").fill(guest);
-  await page.getByRole("button", { name: "Add traveler" }).click();
-  await expect(page.getByRole("group", { name: `Invitation for ${guest}` })).toBeVisible();
+  await openSection(page, "Tripmates");
+  await page.getByLabel("Tripmate name").fill(guest);
+  await page.getByRole("button", { name: "Add tripmate" }).click();
+  await expect(page.getByRole("group", { name: `Tripmate ${guest}` })).toBeVisible();
   await openSection(page, "Expenses");
   const form = await openExpense(page);
   await form.getByLabel("Description").fill("Shared hotel");
@@ -90,7 +90,7 @@ test("net balances, accessible external confirmation and stale transfer recovery
   expect(stale.headers()["cache-control"]).toBe("no-store");
   expect(await (await page.request.get(`/api/v1/groups/${tripId}/settlements`)).json()).toHaveLength(1);
   await page.getByRole("link", { name: "View settlement history" }).click();
-  await expect(page.getByRole("region", { name: "Payment history", exact: true })).toContainText(`${guest} settled with Alice`);
+  await expect(page.getByRole("region", { name: "History", exact: true })).toContainText(`${guest} settled with You`);
 
   // A second client consumes the next suggestion while this dialog is open.
   await openSection(page, "Expenses");

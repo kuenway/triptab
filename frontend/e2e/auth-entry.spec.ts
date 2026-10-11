@@ -49,9 +49,9 @@ test("auth entry stays exclusive while checking, fits mobile, and resumes an inv
   await page.unroute("**/api/v1/auth/me");
   await page.getByLabel("Trip name").fill(`Auth invitation ${suffix}`);
   await page.getByRole("button", { name: "Create trip" }).click();
-  await openSection(page, "Travelers");
-  await page.getByLabel("Traveler name").fill("Bob");
-  await page.getByRole("button", { name: "Add traveler" }).click();
+  await openSection(page, "Tripmates");
+  await page.getByLabel("Tripmate name").fill("Bob");
+  await page.getByRole("button", { name: "Add tripmate" }).click();
   await page.getByRole("button", { name: "Invite" }).click();
   const link = await page.getByLabel("Invitation link").inputValue();
   const context = await browser.newContext();

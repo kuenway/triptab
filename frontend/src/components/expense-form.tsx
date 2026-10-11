@@ -48,7 +48,7 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
     if (initialExpense && !reason.trim()) return setError("Enter a reason.");
     if (!description.trim()) return setError("Enter a description.");
     if (!Number.isSafeInteger(numericAmount) || numericAmount <= 0) return setError("Enter a positive whole NTD amount.");
-    if (participants.length === 0) return setError("Choose at least one traveler to split with.");
+    if (participants.length === 0) return setError("Choose at least one tripmate to split with.");
     if (!occurredAt || Number.isNaN(new Date(occurredAt).getTime())) return setError("Choose when the expense happened.");
 
     const common = {
@@ -94,7 +94,7 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
     }
   }
 
-  if (travelers.length === 0) return <p className="muted">Add a traveler before recording expenses.</p>;
+  if (travelers.length === 0) return <p className="muted">Add a tripmate before recording expenses.</p>;
 
   return (
     <form onSubmit={submit} onChange={() => setParticipants((current) => current ?? participants)} className="stack-form expense-form">
@@ -134,11 +134,11 @@ export function ExpenseForm({ tripId, travelers, onCreated, initialExpense, onCa
           {exactMismatch ? <p className="field-hint" role="status">Allocations must match the expense amount.</p> : null}
         </div>
       ) : null}
-      {!initialExpense && !ownMemberId ? <p className="field-hint">Your traveler membership could not be resolved. Choose who paid explicitly or refresh the trip.</p> : null}
+      {!initialExpense && !ownMemberId ? <p className="field-hint">Your tripmate membership could not be resolved. Choose who paid explicitly or refresh the trip.</p> : null}
       {error ? <p id={`${prefix}-error`} className="alert" role="alert">{error}</p> : null}
       </fieldset>
       <div className="payment-actions">{onCancel ? <button type="button" disabled={saving} onClick={onCancel}>Cancel</button> : null}<button type="submit" disabled={saving || (strategy === "exact" && exactMismatch)}>{saving ? "Saving…" : initialExpense ? "Save changes" : "Add expense"}</button></div>
-      {saved ? <div className="success" role="status"><strong>Expense saved.</strong> Stored split: {saved.splits.map((split) => `${names[split.member_id] ?? "Traveler"} ${money(split.amount)}`).join(" · ")}</div> : null}
+      {saved ? <div className="success" role="status"><strong>Expense saved.</strong> Stored split: {saved.splits.map((split) => `${names[split.member_id] ?? "Tripmate"} ${money(split.amount)}`).join(" · ")}</div> : null}
     </form>
   );
 }

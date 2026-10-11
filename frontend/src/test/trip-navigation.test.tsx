@@ -41,9 +41,9 @@ beforeEach(() => {
 
 it.each([
   ["", "Expenses", ExpensesPage, ["Expenses"]],
-  ["/balances", "Balances", BalancesPage, ["Balances", "Your balance", "Traveler balances", "Suggested transfers"]],
-  ["/travelers", "Travelers", TravelersPage, ["Travelers"]],
-  ["/history", "History", HistoryPage, ["History", "Expense history", "Payment history"]],
+  ["/balances", "Balances", BalancesPage, ["Balances", "Your balance", "Tripmate balances", "Suggested transfers"]],
+  ["/travelers", "Tripmates", TravelersPage, ["Tripmates"]],
+  ["/history", "History", HistoryPage, ["History", "No history yet."]],
 ] as const)("renders only the requested section at /trips/trip%s", async (suffix, active, Page, headings) => {
   navigation.pathname += suffix;
   render(route(<Page />));
@@ -52,16 +52,16 @@ it.each([
   const links = nav.getAllByRole("link");
   expect(links).toHaveLength(4);
   expect(links.filter((link) => link.getAttribute("aria-current") === "page")).toEqual([nav.getByRole("link", { name: active })]);
-  for (const [name, path] of [["Expenses", ""], ["Balances", "/balances"], ["Travelers", "/travelers"], ["History", "/history"]]) {
+  for (const [name, path] of [["Expenses", ""], ["Balances", "/balances"], ["Tripmates", "/travelers"], ["History", "/history"]]) {
     expect(nav.getByRole("link", { name })).toHaveProperty("href", "http://localhost:3000/trips/trip" + path);
   }
   expect(screen.queryByRole("tab")).toBeNull();
-  for (const name of ["Expenses", "Add an expense", "Current expenses", "Balances", "Your balance", "Traveler balances", "Suggested transfers", "Suggested payments", "Record payment", "Current payments", "Travelers", "History", "Expense history", "Payment history"]) {
+  for (const name of ["Expenses", "Add an expense", "Current expenses", "Balances", "Your balance", "Tripmate balances", "Suggested transfers", "Suggested payments", "Record payment", "Current payments", "Tripmates", "History", "No history yet.", "Expense history", "Payment history"]) {
     expect(screen.queryAllByRole("heading", { name })).toHaveLength(headings.some((heading) => heading === name) ? 1 : 0);
   }
   expect(screen.getAllByRole("main")).toHaveLength(1);
-  expect(screen.getByText("1 traveler · TWD")).toBeTruthy();
-  if (active !== "Travelers") expect(api.listInvitations).not.toHaveBeenCalled();
+  expect(screen.getByText("1 tripmate · TWD")).toBeTruthy();
+  if (active !== "Tripmates") expect(api.listInvitations).not.toHaveBeenCalled();
 });
 
 it("retains shared Trip data across section navigation without decorative requests", async () => {
@@ -140,13 +140,32 @@ it("reuses immutable expense history and settlement controls on the History rout
   vi.mocked(api.listSettlements).mockResolvedValue([{ id: "payment", group_id: trip.id, from_member_id: "bob", to_member_id: "alice", from_display_name: "Bob", to_display_name: "Alice", amount: 300, occurred_at: expense.occurred_at, created_at: expense.created_at, created_by_user_id: auth.user.id, status: "active" }]);
   navigation.pathname = "/trips/trip/history";
   render(route(<HistoryPage />));
-  expect(await screen.findByRole("heading", { name: "Updated dinner" })).toBeTruthy();
-  fireEvent.click(screen.getByText("Show expense history (1)"));
-  expect(screen.getByRole("heading", { name: "Dinner" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Updated dinner edited" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Dinner added" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("heading", { name: "Updated dinner edited" }).closest("article")!.querySelector("summary")!);
   expect(screen.getByText("Reason: Receipt correction")).toBeTruthy();
-  expect(screen.getByRole("link", { name: "Replaced by another expense · NT$990" })).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Bob settled with Alice" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Bob settled with You" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("heading", { name: "Bob settled with You" }).closest("article")!.querySelector("summary")!);
   expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Delete payment" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Delete expense" })).toBeNull();
+});
+
+it("keeps resolved auth and the same shell/header/nav through all four destinations", async () => {
+  const view = render(route(<ExpensesPage />));
+  const nav = await screen.findByRole("navigation", { name: "Trip sections" });
+  const main = screen.getByRole("main");
+  const header = main.querySelector("header");
+  for (const [path, Page, heading] of [["balances", BalancesPage, "Balances"], ["travelers", TravelersPage, "Tripmates"], ["history", HistoryPage, "History"], ["", ExpensesPage, "Expenses"]] as const) {
+    navigation.pathname = "/trips/trip" + (path ? "/" + path : "");
+    view.rerender(route(<Page />));
+    expect(screen.getByRole("navigation")).toBe(nav);
+    expect(screen.getByRole("main")).toBe(main);
+    expect(main.querySelector("header")).toBe(header);
+    expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+    expect(screen.queryByText(/Loading session|Private trip · Financial history/)).toBeNull();
+    expect(main.querySelector(".auth-shell")).toBeNull();
+  }
+  expect(api.getMe).toHaveBeenCalledOnce();
+  expect(api.getTrip).toHaveBeenCalledOnce();
 });

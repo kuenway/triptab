@@ -15,12 +15,12 @@ test("ledger-first entry, shared editing, history and responsive native dialog r
   const tripId = new URL(page.url()).pathname.split("/").pop()!;
   await expect(page.getByRole("heading", { name: "No expenses yet." })).toBeVisible();
   await expect(page.getByLabel("Description")).toHaveCount(0);
-  await openSection(page, "Travelers");
+  await openSection(page, "Tripmates");
   const names = ["Bob", "Charlie", "A traveler with a deliberately long display name", ...Array.from({ length: 8 }, (_, i) => `Guest ${i + 1}`)];
   for (const name of names) {
-    await page.getByLabel("Traveler name").fill(name);
-    await page.getByRole("button", { name: "Add traveler", exact: true }).click();
-    await expect(page.getByRole("group", { name: `Invitation for ${name}`, exact: true })).toBeVisible();
+    await page.getByLabel("Tripmate name").fill(name);
+    await page.getByRole("button", { name: "Add tripmate", exact: true }).click();
+    await expect(page.getByRole("group", { name: `Tripmate ${name}`, exact: true })).toBeVisible();
   }
   await openSection(page, "Expenses");
   const members = await (await page.request.get(`/api/v1/groups/${tripId}/members`)).json();
@@ -56,7 +56,7 @@ test("ledger-first entry, shared editing, history and responsive native dialog r
   const current = page.getByRole("group", { name: "Current expenses", exact: true });
   const row = current.locator("article").filter({ hasText: description });
   await expect(row.getByRole("heading", { name: description })).toBeVisible();
-  await expect(row).toContainText("NT$123,456"); await expect(row).toContainText(`You paid · ${members.length} travelers`);
+  await expect(row).toContainText("NT$123,456"); await expect(row).toContainText(`You paid · ${members.length} tripmates`);
   await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
   const stored = await (await page.request.get(`/api/v1/groups/${tripId}/expenses`)).json();
   const share = stored[0].splits.find((s: { member_id: string }) => s.member_id === ownerId).amount;
@@ -81,8 +81,17 @@ test("ledger-first entry, shared editing, history and responsive native dialog r
   const confirmation = current.getByRole("form", { name: "Delete expense", exact: true });
   await confirmation.getByLabel("Reason").fill("Duplicate entry"); await confirmation.getByRole("button", { name: "Confirm delete expense", exact: true }).focus(); await page.keyboard.press("Enter");
   await expect(current.locator("article")).toHaveCount(0);
-  await openSection(page, "History"); await page.getByText("Show expense history (2)").click();
-  await expect(page.getByRole("region", { name: "Expense history", exact: true })).toContainText("Duplicate entry");
+  await openSection(page, "History"); await page.getByRole("heading", { name: description + " removed" }).locator("..").locator("..").locator("summary").click();
+  await expect(page.getByRole("region", { name: "History", exact: true })).toContainText("Duplicate entry");
+  const historyView = page.getByRole("region", { name: "History", exact: true });
+  await expect(historyView.getByRole("heading", { name: description + " added", exact: true })).toBeVisible();
+  await expect(historyView.getByRole("heading", { name: description + " edited", exact: true })).toBeVisible();
+  await expect(historyView.getByRole("heading", { name: description + " removed", exact: true })).toBeVisible();
+  await historyView.locator("details[open] > summary").click();
+  await historyView.screenshot({ path: testInfo.outputPath("history-mobile.png") });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await historyView.screenshot({ path: testInfo.outputPath("history-desktop.png") });
+  await page.setViewportSize({ width: 375, height: 812 });
   await openSection(page, "Expenses");
 
   const exact = await openExpense(page); await expect(exact.getByLabel("Description")).toHaveValue("");

@@ -254,3 +254,40 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .net-balance-list .balance-row { display: grid; grid-template-columns: 1fr; gap: 4px; }
   .net-balance-list .balance-value { text-align: left; }
 }
+
+/* Tripmates and financial activity use the ledger's quiet rows and dividers. */
+.tripmates-section { max-width: 800px; width: 100%; }
+.tripmates-section .traveler-list { margin-bottom: 24px; }
+.tripmate-status { color: var(--muted); font-size: .875rem; font-weight: 400; }
+.tripmates-section .inline-form { grid-template-columns: minmax(0, 1fr) auto; padding-top: 16px; border-top: 1px solid var(--line); }
+.tripmates-section button:focus-visible, .history-section button:focus-visible, .history-details summary:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+.history-section { max-width: 800px; gap: 0; }
+.history-section > .section-heading { margin-bottom: 8px; }
+.history-caption { margin-bottom: 28px; font-size: .875rem; }
+.history-date-group { margin-bottom: 28px; }
+.history-date-group > h3 { color: var(--muted); font-size: .875rem; margin-bottom: 8px; }
+.history-date-group > ol { list-style: none; padding: 0; margin: 0; }
+.history-event { padding: 18px 0; border-top: 1px solid var(--line); }
+.history-event-topline { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 16px; }
+.history-event h4 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.history-amount { font-variant-numeric: tabular-nums; text-align: right; }
+.history-context, .history-change { margin: 6px 0 0; font-size: .875rem; overflow-wrap: anywhere; }
+.history-event-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .8rem; margin: 8px 0 0; }
+.history-details { font-size: .875rem; margin-top: 8px; }
+.history-details summary { width: fit-content; padding: 10px 0; cursor: pointer; color: var(--teal-dark); }
+.history-detail-body { padding: 8px 0; overflow-wrap: anywhere; }
+.history-detail-body p { margin: 0 0 8px; }
+.history-allocations { list-style: none; padding: 0; margin: 12px 0; }
+.history-allocations li { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; }
+.history-allocations li span { min-width: 0; overflow-wrap: anywhere; }
+.history-allocations strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.history-empty { padding: 24px 0; }
+@media (min-width: 801px) {
+  .tripmates-section .traveler-row { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  .tripmates-section .traveler-actions { grid-column: 3; grid-row: 1; }
+}
+@media (max-width: 520px) {
+  .history-event-topline { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .history-amount { text-align: left; }
+  .tripmates-section .inline-form button { padding-inline: 12px; }
+}

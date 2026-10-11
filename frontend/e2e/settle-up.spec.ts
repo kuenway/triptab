@@ -29,11 +29,11 @@ test("confirms Bob's external settlement and preserves correction history", asyn
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
 
-  await openSection(page, "Travelers");
-  const travelers = page.getByRole("region", { name: "Travelers", exact: true });
+  await openSection(page, "Tripmates");
+  const travelers = page.getByRole("region", { name: "Tripmates", exact: true });
   for (const name of ["Bob", "Charlie"]) {
-    await travelers.getByLabel("Traveler name").fill(name);
-    await travelers.getByRole("button", { name: "Add traveler" }).click();
+    await travelers.getByLabel("Tripmate name").fill(name);
+    await travelers.getByRole("button", { name: "Add tripmate" }).click();
     await expect(travelers.locator(".traveler-row").filter({ hasText: name })).toBeVisible();
   }
   await expect(travelers.locator(".traveler-row").filter({ hasText: "Alice" })).toContainText("Owner");
@@ -62,11 +62,11 @@ test("confirms Bob's external settlement and preserves correction history", asyn
   await expect(suggestions.locator(".suggestion-item")).toHaveCount(1);
   await expect(suggestions.locator(".suggestion-item")).toContainText("Charlie → You");
   await openSection(page, "History");
-  const history = page.getByRole("region", { name: "Payment history", exact: true });
-  await expect(history).toContainText("Bob settled with Alice");
+  const history = page.getByRole("region", { name: "History", exact: true });
+  await expect(history).toContainText("Bob settled with You");
   await expect(history).toContainText("NT$300");
   await page.reload();
-  await expect(history).toContainText("Bob settled with Alice");
+  await expect(history).toContainText("Bob settled with You");
   await openSection(page, "Balances");
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Settled");
   const tripUrl = page.url();
@@ -81,34 +81,35 @@ test("confirms Bob's external settlement and preserves correction history", asyn
   await page.goto(tripUrl);
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Settled");
   await openSection(page, "History");
-  await expect(history).toContainText("Bob settled with Alice");
+  await expect(history).toContainText("Bob settled with You");
 
-  const currentPayments = history.getByRole("group", { name: "Current payments", exact: true });
-  await currentPayments.getByRole("button", { name: "Edit" }).click();
-  const paymentEditor = currentPayments.getByRole("group", { name: "Edit payment" });
+  const settlementId = (await (await page.request.get(`/api/v1/groups/${new URL(page.url()).pathname.split("/")[2]}/settlements`)).json())[0].id;
+  const originalPayment = history.locator(`#payment-${settlementId}`);
+  await originalPayment.locator("summary").click();
+  await originalPayment.getByRole("button", { name: "Edit", exact: true }).click();
+  const paymentEditor = originalPayment.getByRole("group", { name: "Edit payment" });
   await expect(paymentEditor.getByLabel("Payment amount (NT$)")).toHaveValue("300");
   await paymentEditor.getByLabel("Payment amount (NT$)").fill("200");
   await paymentEditor.getByLabel("Reason").fill("Actual payment was 200");
   await paymentEditor.getByRole("button", { name: "Save changes" }).click();
-  await expect(currentPayments.locator("article")).toHaveCount(1);
-  await expect(currentPayments).toContainText("NT$200");
-  await expect(currentPayments).not.toContainText("NT$300");
-  const paymentHistory = history.locator("details.financial-history");
-  await expect(paymentHistory).toHaveJSProperty("open", false);
-  await currentPayments.getByRole("link", { name: "View edit history" }).click();
-  await expect(paymentHistory).toContainText("Actual payment was 200");
-  await expect(paymentHistory.getByRole("link", { name: "Replaced by another payment · NT$200" })).toBeVisible();
+  const correctedPayment = history.locator("article").filter({ has: page.getByRole("heading", { name: "Settlement corrected", exact: true }) });
+  await expect(correctedPayment).toContainText("NT$300");
+  await expect(correctedPayment).toContainText("NT$200");
+  await correctedPayment.locator("summary").click();
+  await expect(correctedPayment).toContainText("Actual payment was 200");
   await openSection(page, "Balances");
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Owes NT$100");
   await openSection(page, "History");
-  await currentPayments.getByRole("button", { name: "Delete payment" }).click();
-  const deletePayment = currentPayments.getByRole("form", { name: "Delete payment" });
+  await correctedPayment.locator("summary").click();
+  await correctedPayment.getByRole("button", { name: "Delete payment" }).click();
+  const deletePayment = correctedPayment.getByRole("form", { name: "Delete payment" });
   await deletePayment.getByLabel("Reason").fill("Payment did not happen");
   await deletePayment.getByRole("button", { name: "Confirm delete payment" }).click();
-  await expect(currentPayments.locator("article")).toHaveCount(0);
-  await expect(paymentHistory.locator("article")).toHaveCount(2);
-  await expect(paymentHistory).toContainText("Payment did not happen");
-  await expect(paymentHistory.locator("article").getByRole("button")).toHaveCount(0);
+  const removedPayment = history.locator("article").filter({ has: page.getByRole("heading", { name: "Settlement removed", exact: true }) });
+  await expect(removedPayment).toBeVisible();
+  await removedPayment.locator("summary").click();
+  await expect(removedPayment).toContainText("Payment did not happen");
+  await expect(history.getByRole("button", { name: "Delete payment" })).toHaveCount(0);
   await openSection(page, "Balances");
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Owes NT$300");
 
@@ -119,11 +120,11 @@ test("edits and deletes an expense while keeping previous versions in history", 
   await page.getByLabel("Trip name").fill(`Edit/history smoke ${Date.now()}`);
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
-  await openSection(page, "Travelers");
-  const travelers = page.getByRole("region", { name: "Travelers", exact: true });
+  await openSection(page, "Tripmates");
+  const travelers = page.getByRole("region", { name: "Tripmates", exact: true });
   for (const name of ["Bob", "Charlie"]) {
-    await travelers.getByLabel("Traveler name").fill(name);
-    await travelers.getByRole("button", { name: "Add traveler" }).click();
+    await travelers.getByLabel("Tripmate name").fill(name);
+    await travelers.getByRole("button", { name: "Add tripmate" }).click();
     await expect(travelers.locator(".traveler-row").filter({ hasText: name })).toBeVisible();
   }
   await openSection(page, "Expenses");

@@ -7,8 +7,8 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { api, ApiError, InvitationPreview, invitationToken, Traveler, TripInvitation } from "../lib/api";
 import { useAuth } from "./auth";
 
-export function TravelerInvitations({ tripId, travelers, canManage, onChanged }: { tripId: string; travelers: Traveler[]; canManage: boolean; onChanged?: () => Promise<void> }) {
-  const [invitations, setInvitations] = useState<TripInvitation[]>([]);
+export function TravelerInvitations({ tripId, travelers, canManage, currentUserId, onChanged }: { tripId: string; travelers: Traveler[]; canManage: boolean; currentUserId?: string; onChanged?: () => Promise<void> }) {
+  const [invitations, setInvitations] = useState<TripInvitation[] | null>(null);
   const [link, setLink] = useState<{ memberId: string; url: string } | null>(null);
   const [confirmRemoval, setConfirmRemoval] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -18,8 +18,8 @@ export function TravelerInvitations({ tripId, travelers, canManage, onChanged }:
   const [copied, setCopied] = useState(false);
   const pending = useRef(false);
   const label = useId();
-  const load = useCallback(async () => { if (canManage) setInvitations(await api.listInvitations(tripId)); }, [tripId, canManage]);
-  useEffect(() => { void Promise.resolve().then(load).catch(() => setListError("Could not load invitations. Try refreshing the trip.")); }, [load, travelers]);
+  const load = useCallback(async () => { if (!canManage) return; setListError(""); try { setInvitations(await api.listInvitations(tripId)); } catch { setListError("Could not load invitations. Please retry."); } }, [tripId, canManage]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load, travelers]);
 
   async function change(member: Traveler, invitation?: TripInvitation, remove = false) {
     if (pending.current) return;
@@ -38,16 +38,17 @@ export function TravelerInvitations({ tripId, travelers, canManage, onChanged }:
   }
 
   return <div className="traveler-list">
-    {travelers.map((member) => {
+    {travelers.length === 0 ? <p className="muted">No tripmates yet.</p> : null}
+    {[...travelers].sort((a, b) => Number(b.role === "owner") - Number(a.role === "owner")).map((member) => {
       const guest = member.role !== "owner" && !member.user_id;
       // The API returns newest first. Detached audit never creates a traveler row.
-      const latest = invitations.find((invitation) => invitation.target_member_id === member.id);
-      return <div role="group" aria-label={`Invitation for ${member.display_name}`} key={member.id} aria-busy={busyMemberId === member.id} className="traveler-row">
+      const latest = invitations?.find((invitation) => invitation.target_member_id === member.id);
+      return <div role="group" aria-label={`Tripmate ${member.display_name}`} key={member.id} aria-busy={busyMemberId === member.id} className="traveler-row">
         <span className="person-dot" aria-hidden="true">{member.display_name.charAt(0).toUpperCase()}</span>
-        <div className="traveler-identity"><span className="person-name">{member.display_name}</span> <span className="strategy-pill">{member.role === "owner" ? "Owner" : guest ? "Guest" : "Member"}</span>
-          {guest && canManage ? <small className="muted">{latest ? `${latest.status.charAt(0).toUpperCase()}${latest.status.slice(1)} invitation` : "No invitation"}</small> : null}
+        <div className="traveler-identity"><span className="person-name">{member.display_name}</span> <small className="tripmate-status">{member.role === "owner" ? "Owner" : guest ? "Guest" : "Member"}{member.user_id === currentUserId && currentUserId ? " · You" : ""}</small>
+          {guest && canManage ? <small className="muted">{listError ? "Invitation status unavailable" : !invitations ? "Checking invitation…" : latest?.status === "pending" ? "Invitation pending" : latest ? `${latest.status.charAt(0).toUpperCase()}${latest.status.slice(1)} invitation` : "No invitation"}</small> : null}
         </div>
-        {guest && canManage ? <div className="traveler-actions"><button disabled={busy} onClick={() => { if (latest?.status !== "pending" || window.confirm("Generate a new invite link?\nThe current invite link will stop working.")) void change(member); }}>{latest?.status === "pending" ? "New link" : "Invite"}</button>{latest?.status === "pending" ? <button disabled={busy} aria-label="Revoke invitation" onClick={() => void change(member, latest)}>Revoke</button> : null}<button type="button" className="remove-traveler" aria-label="Remove traveler" title="Remove traveler" disabled={busy} onClick={() => { setErrors((current) => ({ ...current, [member.id]: "" })); setConfirmRemoval(member.id); }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg></button></div> : null}
+        {guest && canManage ? <div className="traveler-actions"><button disabled={busy || !invitations || Boolean(listError)} onClick={() => { if (latest?.status !== "pending" || window.confirm("Generate a new invite link?\nThe current invite link will stop working.")) void change(member); }}>{latest?.status === "pending" ? "New link" : "Invite"}</button>{latest?.status === "pending" ? <button disabled={busy} aria-label="Revoke invitation" onClick={() => void change(member, latest)}>Revoke</button> : null}<button type="button" className="remove-traveler" aria-label={`Remove tripmate ${member.display_name}`} title={`Remove ${member.display_name} from this Trip`} disabled={busy} onClick={() => { setErrors((current) => ({ ...current, [member.id]: "" })); setConfirmRemoval(member.id); }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg></button></div> : null}
         {confirmRemoval === member.id && guest && canManage ? <div className="traveler-detail"><p>Remove {member.display_name} from this trip? Only an unused Guest can be removed. Any invitation will be revoked.</p><div className="payment-actions"><button disabled={busy} onClick={() => void change(member, undefined, true)}>Confirm removal</button><button disabled={busy} onClick={() => setConfirmRemoval(null)}>Cancel removal</button></div></div> : null}
         {link?.memberId === member.id && guest && canManage ? <div className="stack-form traveler-detail">
           <label htmlFor={label}>Invitation link</label><input id={label} readOnly value={link.url} />
@@ -58,7 +59,7 @@ export function TravelerInvitations({ tripId, travelers, canManage, onChanged }:
         {errors[member.id] ? <p role="alert" className="alert traveler-detail">{errors[member.id]}</p> : null}
       </div>;
     })}
-    {listError ? <p role="alert" className="alert">{listError}</p> : null}
+    {listError ? <div><p role="alert" className="alert">{listError}</p><button className="payment-button" onClick={() => void load()}>Retry invitations</button></div> : null}
   </div>;
 }
 
@@ -115,7 +116,7 @@ export function InvitationPage() {
     <section className="panel stack-form">
       {loading ? <p role="status">Checking invitation…</p> : unavailable ? <><h1>Invitation unavailable</h1><p>This invitation is no longer available.</p></> : preview ? <>
         <h1>Join {preview.trip_name}</h1><p>You&apos;ve been invited to join as {preview.member_display_name}.</p>
-        <p className="muted">Expires {new Date(preview.expires_at).toLocaleString()}. This links your account to this traveler and their existing trip history.</p>
+        <p className="muted">Expires {new Date(preview.expires_at).toLocaleString()}. This links your account to this tripmate and their existing trip history.</p>
         {auth.loading ? <p role="status">Checking sign-in…</p> : auth.error ? <><p role="alert">{auth.error}</p><button onClick={() => void auth.refresh()}>Retry sign-in check</button></> : auth.user ? <><p>Signed in as {auth.user.display_name}.</p><button disabled={saving} onClick={() => void join()}>{saving ? "Joining…" : `Join as ${preview.member_display_name}`}</button></> : <div className="payment-actions"><Link replace href={`/login#token=${encodeURIComponent(token!)}`}>Log in to join</Link><Link replace href={`/register#token=${encodeURIComponent(token!)}`}>Create account to join</Link></div>}
       </> : null}
       {error ? <p role="alert" className="alert">{error}</p> : null}

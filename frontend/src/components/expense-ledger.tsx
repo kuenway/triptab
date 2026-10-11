@@ -9,12 +9,7 @@ import { AuditDetails, FinancialActions } from "./financial-history";
 import { useTrip } from "./trip-shell";
 
 const money = (amount: number) => `NT$${new Intl.NumberFormat("en-US").format(amount)}`;
-const day = (value: string | Date) => new Date(value).toDateString();
-function dateLabel(value: string) {
-  const today = new Date(), yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  return day(value) === day(today) ? "Today" : day(value) === day(yesterday) ? "Yesterday" : new Date(value).toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "short", day: "numeric" });
-}
+import { dateLabel, day } from "../lib/dates";
 
 export function ExpenseLedger({ history }: { history: ReactNode }) {
   const { user } = useAuth();
@@ -40,15 +35,15 @@ export function ExpenseLedger({ history }: { history: ReactNode }) {
           <h3>{dateLabel(group[0]!.occurred_at)}</h3>
           {group.map((expense) => {
             const share = expense.splits.find((split) => split.member_id === member?.id);
-            const payer = expense.payer_member_id === member?.id ? "You" : names[expense.payer_member_id] ?? "Traveler";
+            const payer = expense.payer_member_id === member?.id ? "You" : names[expense.payer_member_id] ?? "Tripmate";
             return <article className="ledger-row" id={`expense-${expense.id}`} key={expense.id}>
               <div className="ledger-topline"><h4>{expense.description}</h4><strong className="expense-amount">{money(expense.amount)}</strong></div>
-              <p className="ledger-meta muted">{payer} paid · {expense.splits.length} {expense.splits.length === 1 ? "traveler" : "travelers"}</p>
+              <p className="ledger-meta muted">{payer} paid · {expense.splits.length} {expense.splits.length === 1 ? "tripmate" : "tripmates"}</p>
               {share ? <p className="personal-share">Your share {money(share.amount)}</p> : null}
               <div className="ledger-row-controls"><details className="expense-details"><summary>Details<span className="sr-only"> for {expense.description}</span></summary><div>
-                <p>Paid by {names[expense.payer_member_id] ?? "Traveler"}</p>
+                <p>Paid by {names[expense.payer_member_id] ?? "Tripmate"}</p>
                 <p><time dateTime={expense.occurred_at}>{new Date(expense.occurred_at).toLocaleString()}</time> · {expense.split_strategy === "equal" ? "Equal split" : "Exact split"}</p>
-                <ul>{expense.splits.map((split) => <li key={split.member_id}><span>{names[split.member_id] ?? "Traveler"}</span><strong>{money(split.amount)}</strong></li>)}</ul>
+                <ul>{expense.splits.map((split) => <li key={split.member_id}><span>{names[split.member_id] ?? "Tripmate"}</span><strong>{money(split.amount)}</strong></li>)}</ul>
               </div></details>
               {(owner || expense.created_by_user_id === user?.id) ? <FinancialActions tripId={trip.id} record={expense} kind="expense" onChanged={load} onEdit={() => setEntry(expense)} correction={() => null} /> : null}</div>
               <AuditDetails record={expense} kind="expense" amounts={amounts} />

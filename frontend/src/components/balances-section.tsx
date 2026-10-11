@@ -10,7 +10,7 @@ const money = (amount: number) => `NT$${new Intl.NumberFormat("en-US").format(am
 
 export function BalanceList({ balances, currentMemberId }: { balances: Balances; currentMemberId?: string }) {
   return <div className="balance-list net-balance-list">
-    {balances.balances.length === 0 ? <p className="muted">Traveler balances are unavailable.</p> : null}
+    {balances.balances.length === 0 ? <p className="muted">Tripmate balances are unavailable.</p> : null}
     {balances.balances.map((balance) => <div className="balance-row" key={balance.member_id}>
       <span className="person-name">{balance.member_id === currentMemberId ? "You" : balance.display_name}</span>
       <span className={`balance-value ${balance.amount > 0 ? "positive" : balance.amount < 0 ? "negative" : "even"}`}>
@@ -33,8 +33,8 @@ export function BalancesSection() {
         {personal ? <><p>{personal.amount > 0 ? "You are owed" : personal.amount < 0 ? "You owe" : "You're settled up"}</p>{personal.amount !== 0 ? <strong>{money(Math.abs(personal.amount))}</strong> : null}</> : <p className="muted">{dataError ? "Balances could not be refreshed. Retry before confirming a transfer." : balances ? "Your balance could not be resolved." : "Loading balances…"}</p>}
       </div>
       {settled ? <p className="settlement-status" role="status">Everyone is settled up.</p> : null}
-      <h3>Traveler balances</h3>
-      <p className="muted balance-caption">Each traveler&apos;s net position in this Trip.</p>
+      <h3>Tripmate balances</h3>
+      <p className="muted balance-caption">Each tripmate&apos;s net position in this Trip.</p>
       {!dataError && balances ? <BalanceList balances={balances} {...(member ? { currentMemberId: member.id } : {})} /> : null}
     </section>
     <section className="suggested-transfers" aria-labelledby="transfers-heading">
