@@ -128,12 +128,18 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .auth-status { text-align: center; }
 .auth-status > p { margin-bottom: 0; }
 .auth-shell a:focus-visible { outline: 2px solid var(--teal); outline-offset: 4px; }
-.account-menu { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }
+/* A disclosure uses ordinary button/tab semantics rather than an ARIA command menu. */
+.account-menu { position: relative; }
+.account-trigger { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 50%; background: #e5f4ef; color: var(--teal-dark); font-weight: 700; }
+.account-popover { position: absolute; z-index: 20; right: 0; top: calc(100% + 8px); width: min(280px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 8px 24px rgb(23 43 53 / 12%); }
+.account-popover p { margin: 0; }
+.account-popover .account-identity { overflow-wrap: anywhere; margin: 4px 0 16px; }
+.account-popover button { width: 100%; min-height: 44px; padding: 8px 12px; text-align: left; border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--ink); }
+.account-menu button:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
 
 /* Trip routes share navigation; existing section and auth styles stay local. */
 .trip-shell { max-width: 1104px; }
 .trip-shell .site-header { min-height: 72px; height: auto; padding: 12px 0; gap: 16px; flex-wrap: wrap; }
-.trip-shell .account-menu { min-width: 0; overflow-wrap: anywhere; }
 .trip-heading { padding: 24px 0 20px; }
 .trip-heading .back-link { display: inline-block; margin-bottom: 12px; }
 .trip-heading h1 { font-size: clamp(1.75rem, 3vw, 2.25rem); overflow-wrap: anywhere; }
@@ -286,7 +292,6 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .trips-home .site-header { min-height: 72px; height: auto; padding: 12px 0; gap: 16px; flex-wrap: wrap; }
 .trips-home .account-menu { min-width: 0; overflow-wrap: anywhere; }
 .trips-home .wordmark { display: inline-flex; align-items: center; min-height: 44px; }
-.trips-home .account-menu button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--teal-dark); }
 .trips-home .payment-button { min-height: 44px; }
 .trips-workspace { padding-top: 32px; }
 .trips-workspace h1 { font-size: clamp(1.75rem, 3vw, 2.25rem); margin-bottom: 24px; }

@@ -27,7 +27,7 @@ test("auth entry stays exclusive while checking, fits mobile, and resumes an inv
   await page.keyboard.press("Tab");
   await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: "Log in", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeFocused();
   await page.getByRole("link", { name: "Create an account" }).click();
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const password = "TripTab auth entry test 123";
@@ -64,14 +64,15 @@ test("auth entry stays exclusive while checking, fits mobile, and resumes an inv
     await bob.getByLabel("Email", { exact: true }).fill(bobEmail);
     await bob.getByLabel("Password", { exact: true }).fill(password);
     await bob.getByRole("button", { name: "Register", exact: true }).click();
-    await bob.getByRole("button", { name: "Log out" }).click();
+    await bob.getByRole("button", { name: "Account menu", exact: true }).click();
+    await bob.getByRole("button", { name: "Sign out", exact: true }).click();
     await expect(bob.getByRole("heading", { name: "Sign in" })).toBeVisible();
     await bob.goto(link);
-    await bob.getByRole("link", { name: "Log in to join" }).click();
+    await bob.getByRole("link", { name: "Sign in to join" }).click();
     await expect(bob).toHaveURL(/\/login#token=/);
     await bob.getByLabel("Email", { exact: true }).fill(bobEmail);
     await bob.getByLabel("Password", { exact: true }).fill(password);
-    await bob.getByRole("button", { name: "Log in", exact: true }).click();
+    await bob.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(bob).toHaveURL(/\/invite#token=/);
     await expect(bob.getByRole("button", { name: "Join as Bob" })).toBeVisible();
     await bob.getByRole("button", { name: "Join as Bob" }).click();

@@ -71,13 +71,15 @@ test("confirms Bob's external settlement and preserves correction history", asyn
   await openSection(page, "Balances");
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Settled");
   const tripUrl = page.url();
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Account menu", exact: true }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goto(tripUrl);
   await expect(page).toHaveURL(/\/login$/);
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("TripTab test password 123");
-  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("button", { name: "+ New trip", exact: true })).toBeVisible();
   await page.goto(tripUrl);
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Settled");
@@ -215,7 +217,9 @@ test("a second account cannot open another account's private trip", async ({ pag
   await page.getByRole("button", { name: "Create trip" }).click();
   await expect(page).toHaveURL(/\/trips\/[^/]+$/);
   const tripUrl = page.url();
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Account menu", exact: true }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
   await register(page, "Bob");
   await expect(page.getByText("No trips yet")).toBeVisible();

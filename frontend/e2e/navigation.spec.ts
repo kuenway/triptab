@@ -9,11 +9,12 @@ test("Trip routes survive reload, browser history and direct links at mobile and
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("TripTab navigation test 123");
   await page.getByRole("button", { name: "Register", exact: true }).click();
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("button", { name: "Account menu", exact: true }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("TripTab navigation test 123");
-  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill(`Navigation ${suffix}`);
   await page.getByRole("button", { name: "Create trip" }).click();
@@ -99,7 +100,9 @@ test("Trip routes survive reload, browser history and direct links at mobile and
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("trip-desktop.png"), fullPage: true });
 
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Account menu", exact: true }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await page.goto(tripUrl + "/balances");
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();

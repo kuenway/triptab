@@ -102,7 +102,7 @@ it("previews minimal information and requires explicit acceptance", async () => 
 it("offers login and registration with fragment-only continuation", async () => {
   vi.mocked(api.getMe).mockRejectedValue(new ApiError("sign in required",401));
   page();
-  expect(await screen.findByRole("link",{name:"Log in to join"})).toHaveProperty("href","http://localhost:3000/login#token="+token);
+  expect(await screen.findByRole("link",{name:"Sign in to join"})).toHaveProperty("href","http://localhost:3000/login#token="+token);
   expect(screen.getByRole("link",{name:"Create account to join"})).toHaveProperty("href","http://localhost:3000/register#token="+token);
   expect(api.acceptInvitation).not.toHaveBeenCalled();
 });
@@ -111,12 +111,12 @@ it.each(["login","register"] as const)("returns from %s to the invitation withou
   window.history.replaceState(null,"","/"+mode+"#token="+token);
   vi.mocked(api.login).mockResolvedValue(state); vi.mocked(api.register).mockResolvedValue(state);
   render(<AuthProvider><AuthForm mode={mode} /></AuthProvider>);
-  const submit=await screen.findByRole("button",{name:mode==="login"?"Log in":"Register"});
+  const submit=await screen.findByRole("button",{name:mode==="login"?"Sign in":"Register"});
   await waitFor(()=>expect(submit.hasAttribute("disabled")).toBe(false));
   fireEvent.change(screen.getByLabelText("Email",{exact:true}),{target:{value:user.email}});
   fireEvent.change(screen.getByLabelText("Password",{exact:true}),{target:{value:"TripTab test password 123"}});
   if(mode==="register")fireEvent.change(screen.getByLabelText("Display name"),{target:{value:user.display_name}});
-  expect(screen.getByRole("link",{name:mode==="login"?"Create an account":"Log in"})).toHaveProperty("href",`http://localhost:3000/${mode==="login"?"register":"login"}#token=${token}`);
+  expect(screen.getByRole("link",{name:mode==="login"?"Create an account":"Sign in"})).toHaveProperty("href",`http://localhost:3000/${mode==="login"?"register":"login"}#token=${token}`);
   fireEvent.click(submit);
   await waitFor(()=>expect(replace).toHaveBeenCalledWith("/invite#token="+token));
   expect(api.acceptInvitation).not.toHaveBeenCalled();expect(window.location.hash).toBe("");

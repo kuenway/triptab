@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from "react";
 
 import { api, ApiError, Balances, Expense, Settlement, SettlementSuggestions, Traveler, Trip } from "../lib/api";
-import { AccountMenu } from "./auth";
 
 type TripData = {
   trip: Trip;
@@ -90,7 +89,7 @@ export function TripShell({ tripId, children }: { tripId: string; children: Reac
   const base = `/trips/${tripId}`;
   return <TripContext.Provider value={{ trip, travelers, expenses, balances, suggestions, suggestionsError, payments, paymentsError, load, dataError: error }}>
     <main className="shell trip-shell">
-      <header className="site-header"><Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link><AccountMenu /></header>
+      <header className="site-header"><Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link></header>
       <div className="trip-heading"><Link className="back-link" href="/">← All trips</Link><h1>{trip.name}</h1><p className="muted">{travelers.length} {travelers.length === 1 ? "tripmate" : "tripmates"} · TWD</p></div>
       <nav className="trip-navigation" aria-label="Trip sections">
         {destinations.map(({ name, path, icon }) => <Link key={name} href={base + path} prefetch={true} aria-current={pathname === base + path ? "page" : undefined}>

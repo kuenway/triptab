@@ -12,7 +12,7 @@ test("Trips home is list-first, creates destinations and retains navigation with
   await expect(page.getByRole("heading", { name: "No trips yet.", exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Trip sections" })).toHaveCount(0);
   await expect(page.getByLabel("Trip name")).toHaveCount(0);
-  for (const target of [page.getByRole("button", { name: "Log out", exact: true }), page.getByRole("button", { name: "+ New trip", exact: true }), page.locator(".wordmark")]) expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  for (const target of [page.getByRole("button", { name: "Account menu", exact: true }), page.getByRole("button", { name: "+ New trip", exact: true }), page.locator(".wordmark")]) expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await page.screenshot({ path: testInfo.outputPath("home-empty-mobile.png") });
   const trigger = page.getByRole("button", { name: "+ New trip", exact: true });
   await trigger.focus(); await page.keyboard.press("Enter");
@@ -70,9 +70,11 @@ test("Trips home is list-first, creates destinations and retains navigation with
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("home-dialog-mobile.png") });
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Account menu", exact: true }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await page.getByLabel("Email", { exact: true }).fill(email); await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("list", { name: "Your trips" }).getByRole("link")).toHaveCount(2);
 });
 

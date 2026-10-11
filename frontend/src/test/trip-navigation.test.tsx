@@ -48,6 +48,8 @@ it.each([
   navigation.pathname += suffix;
   render(route(<Page />));
   await screen.findByRole("heading", { name: trip.name });
+  expect(screen.queryByRole("button", { name: /Sign out|Log out|Account menu/ })).toBeNull();
+  expect(screen.getByRole("link", { name: "← All trips" })).toBeTruthy();
   const nav = within(screen.getByRole("navigation", { name: "Trip sections" }));
   const links = nav.getAllByRole("link");
   expect(links).toHaveLength(4);

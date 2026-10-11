@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createContext, FormEvent, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, FormEvent, ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 
 import { api, ApiError, AUTH_EXPIRED_EVENT, AuthState, CurrentUser, invitationToken } from "../lib/api";
 
@@ -77,12 +77,33 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
 export function AccountMenu() {
   const { user, logout } = useAuth();
+  const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  return <div className="account-menu">
-    <span>{user?.display_name}</span>
-    <button disabled={saving} onClick={async () => { setSaving(true); setError(""); try { await logout(); } catch (cause) { setError((cause as Error).message); } finally { setSaving(false); } }}>Log out</button>
-    {error ? <p role="alert" className="alert">{error}</p> : null}
+  const container = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const action = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const initial = `${user?.display_name ?? ""} ${user?.email ?? ""}`.match(/[\p{L}\p{N}]/u)?.[0].toUpperCase();
+  useEffect(() => {
+    if (!open) return;
+    action.current?.focus();
+    const close = () => { setOpen(false); trigger.current?.focus(); };
+    const outside = (event: MouseEvent) => { if (!container.current?.contains(event.target as Node)) close(); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); close(); } };
+    document.addEventListener("click", outside);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("click", outside); document.removeEventListener("keydown", escape); };
+  }, [open]);
+  return <div className="account-menu" ref={container}>
+    <button className="account-trigger" ref={trigger} aria-label="Account menu" title="Account menu" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+      {initial ? <span aria-hidden="true">{initial}</span> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21v-2a8 8 0 0 1 16 0v2" /></svg>}
+    </button>
+    {open ? <div id={id} className="account-popover" role="group" aria-label="Your account">
+      <p className="muted">Signed in as</p><p className="account-identity">{user?.email}</p>
+      <button ref={action} disabled={saving} onClick={async () => { setSaving(true); setError(""); try { await logout(); } catch (cause) { setError((cause as Error).message); } finally { setSaving(false); } }}>Sign out</button>
+      {error ? <p role="alert" className="alert">{error}</p> : null}
+    </div> : null}
   </div>;
 }
 
@@ -135,9 +156,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           {registering ? <p className="muted">Use at least 12 characters.</p> : null}
         </fieldset>
         {error ? <p role="alert" className="alert">{error}</p> : null}
-        <button disabled={saving || auth.loading} type="submit">{saving ? "Please wait…" : registering ? "Register" : "Log in"}</button>
+        <button disabled={saving || auth.loading} type="submit">{saving ? "Please wait…" : registering ? "Register" : "Sign in"}</button>
       </form>
-      <p>{registering ? "Already have an account? " : "New to TripTab? "}<Link replace={Boolean(inviteToken)} href={`${registering ? "/login" : "/register"}${inviteToken ? `#token=${encodeURIComponent(inviteToken)}` : ""}`}>{registering ? "Log in" : "Create an account"}</Link></p>
+      <p>{registering ? "Already have an account? " : "New to TripTab? "}<Link replace={Boolean(inviteToken)} href={`${registering ? "/login" : "/register"}${inviteToken ? `#token=${encodeURIComponent(inviteToken)}` : ""}`}>{registering ? "Sign in" : "Create an account"}</Link></p>
       {inviteToken ? <p><Link replace href="/invite">Cancel invitation</Link></p> : null}
     </section>
   </AuthShell>;

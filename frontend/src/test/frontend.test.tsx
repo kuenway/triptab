@@ -564,7 +564,7 @@ it.each(["register", "login"] as const)("submits the %s form and opens the authe
   vi.mocked(api.register).mockResolvedValue(authState);
   vi.mocked(api.login).mockResolvedValue(authState);
   render(<AuthForm mode={mode} />);
-  const button = await screen.findByRole("button", { name: mode === "register" ? "Register" : "Log in" });
+  const button = await screen.findByRole("button", { name: mode === "register" ? "Register" : "Sign in" });
   await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
   if (mode === "register") fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Alice" } });
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "alice@example.com" } });
@@ -580,7 +580,7 @@ it.each(["register", "login"] as const)("shows %s authentication errors without 
   vi.mocked(api.register).mockRejectedValue(new ApiError(message, 409));
   vi.mocked(api.login).mockRejectedValue(new ApiError(message, 401));
   render(<AuthForm mode={mode} />);
-  const button = await screen.findByRole("button", { name: mode === "register" ? "Register" : "Log in" });
+  const button = await screen.findByRole("button", { name: mode === "register" ? "Register" : "Sign in" });
   await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "alice@example.com" } });
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Wrong password 123" } });
@@ -614,7 +614,8 @@ it("directs logged-out users to login without reading private trips", async () =
 
 it("logs out and removes protected content", async () => {
   render(<RequireAuth><AccountMenu /><p>Private content</p></RequireAuth>);
-  fireEvent.click(await screen.findByRole("button", { name: "Log out" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Account menu" }));
+  fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
   await waitFor(() => expect(api.logout).toHaveBeenCalledOnce());
   await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
   expect(screen.queryByText("Private content")).toBeNull();
@@ -735,7 +736,7 @@ it.each(["login", "register"] as const)("keeps %s loading exclusive until a 401 
   reject(new ApiError("sign in required", 401));
   expect(await screen.findByRole("heading", { name: mode === "login" ? "Sign in" : "Create your account" })).toBeTruthy();
   expect(screen.queryByRole("status")).toBeNull();
-  expect(screen.getByRole("link", { name: mode === "login" ? "Create an account" : "Log in" })).toHaveProperty("href", "http://localhost:3000/" + (mode === "login" ? "register" : "login"));
+  expect(screen.getByRole("link", { name: mode === "login" ? "Create an account" : "Sign in" })).toHaveProperty("href", "http://localhost:3000/" + (mode === "login" ? "register" : "login"));
 });
 
 it("offers retry instead of a login form when the initial session check fails", async () => {

@@ -75,3 +75,26 @@ it("checks uncertain creates without automatically resubmitting", async () => {
   vi.mocked(api.listTrips).mockResolvedValue([trip]); fireEvent.click(screen.getByRole("button", { name: "Check your trips" }));
   expect(await screen.findByRole("link", { name: trip.name })).toBeTruthy(); expect(screen.queryByRole("dialog")).toBeNull(); expect(api.listTrips).toHaveBeenCalledTimes(2);
 });
+
+it("discloses account identity only in the home menu and restores focus on dismissal", async () => {
+  home(); const trigger = await screen.findByRole("button", { name: "Account menu" });
+  expect(trigger.textContent).toBe("A"); expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByText("alice@example.com")).toBeNull(); expect(screen.queryByText("Log out")).toBeNull();
+  fireEvent.click(trigger);
+  const account = screen.getByRole("group", { name: "Your account" });
+  expect(within(account).getByText("alice@example.com")).toBeTruthy();
+  expect(document.activeElement).toBe(within(account).getByRole("button", { name: "Sign out" }));
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("group", { name: "Your account" })).toBeNull(); expect(document.activeElement).toBe(trigger);
+  fireEvent.click(trigger); fireEvent.click(screen.getByRole("heading", { name: "Your trips" }));
+  expect(screen.queryByRole("group", { name: "Your account" })).toBeNull(); expect(document.activeElement).toBe(trigger);
+  fireEvent.click(trigger); fireEvent.click(trigger); expect(screen.queryByText("alice@example.com")).toBeNull();
+});
+it("retains the account menu and current session when existing sign-out fails", async () => {
+  vi.mocked(api.logout).mockRejectedValue(new ApiError("Could not sign out. Please retry.", 503)); home();
+  fireEvent.click(await screen.findByRole("button", { name: "Account menu" }));
+  fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not sign out. Please retry.");
+  expect(screen.getByText("alice@example.com")).toBeTruthy(); expect(screen.getByRole("heading", { name: "Your trips" })).toBeTruthy();
+  expect(api.logout).toHaveBeenCalledOnce();
+});
