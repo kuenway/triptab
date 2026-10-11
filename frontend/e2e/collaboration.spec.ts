@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openSection } from "./trip-navigation";
+import { openExpense, openSection } from "./trip-navigation";
 
 test("Bob claims his existing guest identity and Alice sees their shared ledger", async ({ page, browser }, testInfo) => {
   await page.setViewportSize({ width: 375, height: 812 });
@@ -74,7 +74,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   const beforeMembers = await (await page.request.get(`/api/v1/groups/${tripId}/members`)).json();
   const bobId = beforeMembers.find((m: { display_name: string }) => m.display_name === "Bob").id;
   await openSection(page, "Expenses");
-  const form = page.getByRole("region", { name: "Add an expense", exact: true });
+  const form = await openExpense(page);
   const aliceId = beforeMembers.find((m: { display_name: string }) => m.display_name === "Alice").id;
   await expect(form.getByLabel("Paid by")).toHaveValue(aliceId);
   for (const name of ["Alice", "Bob", "Charlie"]) await expect(form.getByRole("checkbox", { name, exact: true })).toBeChecked();
@@ -141,7 +141,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await bob.getByRole("link", { name: "All trips", exact: false }).click();
     await expect(bob.getByRole("link", { name: new RegExp(`Japan 2027 ${suffix}`) })).toBeVisible();
     await bob.goto(tripUrl);
-    const expense = bob.getByRole("region", { name: "Add an expense", exact: true });
+    const expense = await openExpense(bob);
     await expect(expense.getByLabel("Paid by")).toHaveValue(bobId);
     for (const name of ["Alice", "Bob", "Charlie"]) await expect(expense.getByRole("checkbox", { name, exact: true })).toBeChecked();
     await expense.getByLabel("Description").fill("Bob records Charlie's taxi");

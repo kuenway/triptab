@@ -9,17 +9,18 @@ export function localDateTime(value: string) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, -1);
 }
 
-export function FinancialHistory<T extends FinancialAudit>({ records, kind, children }: {
+export function FinancialHistory<T extends FinancialAudit>({ records, kind, children, historyOnly = false }: {
   records: T[];
   kind: "expense" | "payment";
   children: (record: T) => ReactNode;
+  historyOnly?: boolean;
 }) {
   const current = records.filter((record) => record.status === "active");
   const history = records.filter((record) => record.status === "voided");
   return <>
-    <div className="expense-list" role="group" aria-label={`Current ${kind}s`}>
+    {!historyOnly && <div className="expense-list" role="group" aria-label={`Current ${kind}s`}>
       {current.length ? current.map(children) : <p className="muted">{records.length ? `No current ${kind}s. Previous records are in history.` : kind === "expense" ? "No expenses yet. Add one to start the tab." : "No payments recorded yet."}</p>}
-    </div>
+    </div>}
     {history.length ? <details className="financial-history">
       <summary>Show {kind} history ({history.length})</summary>
       <p className="muted">Previous versions and removed {kind}s. These records are excluded from current balances.</p>
@@ -51,12 +52,13 @@ export function AuditDetails({ record, kind, amounts }: {
   </div>;
 }
 
-export function FinancialActions({ tripId, record, kind, onChanged, correction }: {
+export function FinancialActions({ tripId, record, kind, onChanged, correction, onEdit }: {
   tripId: string;
   record: FinancialAudit & { id: string };
   kind: "expense" | "payment";
   onChanged: () => Promise<void>;
   correction: (close: () => void) => ReactNode;
+  onEdit?: () => void;
 }) {
   const [mode, setMode] = useState<"void" | "edit" | null>(null);
   const [reason, setReason] = useState("");
@@ -90,7 +92,7 @@ export function FinancialActions({ tripId, record, kind, onChanged, correction }
   if (record.status === "voided") return null;
   return <div className="audit-actions">
     {mode === null ? <div className="payment-actions">
-      <button type="button" onClick={() => setMode("edit")}>Edit</button>
+      <button type="button" onClick={() => onEdit ? onEdit() : setMode("edit")}>Edit</button>
       <button type="button" className="delete-record" aria-label={`Delete ${kind}`} title={`Delete ${kind}`} onClick={() => { setError(""); setMode("void"); }}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg>
       </button>

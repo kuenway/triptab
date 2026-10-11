@@ -1,5 +1,5 @@
 import { expect, test, Page } from "@playwright/test";
-import { openSection } from "./trip-navigation";
+import { openExpense, openSection } from "./trip-navigation";
 
 async function register(page: Page, name: string) {
   const email = `${name.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
@@ -38,7 +38,7 @@ test("records Bob's real payment and refreshes the trip", async ({ page }) => {
   }
   await expect(travelers.locator(".traveler-row").filter({ hasText: "Alice" })).toContainText("Owner");
   await openSection(page, "Expenses");
-  const expense = page.getByRole("region", { name: "Add an expense", exact: true });
+  const expense = await openExpense(page);
   await expense.getByLabel("Description").fill("Dinner");
   await expense.getByLabel("Amount (NT$)").fill("900");
   await expense.getByLabel("Paid by").selectOption({ label: "Alice" });
@@ -122,7 +122,7 @@ test("edits and deletes an expense while keeping previous versions in history", 
     await expect(travelers.locator(".traveler-row").filter({ hasText: name })).toBeVisible();
   }
   await openSection(page, "Expenses");
-  const form = page.getByRole("region", { name: "Add an expense", exact: true });
+  const form = await openExpense(page);
   await form.getByLabel("Description").fill("Dinner");
   await form.getByLabel("Amount (NT$)").fill("900");
   await form.getByLabel("Paid by").selectOption({ label: "Alice" });
@@ -137,7 +137,7 @@ test("edits and deletes an expense while keeping previous versions in history", 
   const region = page.getByRole("region", { name: "Current expenses", exact: true });
   const current = region.getByRole("group", { name: "Current expenses", exact: true });
   await current.getByRole("button", { name: "Edit", exact: true }).click();
-  const editor = current.getByRole("group", { name: "Edit expense" });
+  const editor = page.getByRole("dialog", { name: "Edit expense" });
   await expect(editor).toContainText("previous version stays in history");
   await expect(editor.getByLabel("Amount (NT$)")).toHaveValue("900");
   await expect(editor.getByLabel("Description")).toHaveValue("Dinner");

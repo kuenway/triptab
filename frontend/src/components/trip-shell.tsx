@@ -17,6 +17,7 @@ type TripData = {
   payments: Settlement[] | null;
   paymentsError: string;
   load: () => Promise<void>;
+  dataError: string;
 };
 
 const TripContext = createContext<TripData | null>(null);
@@ -87,7 +88,7 @@ export function TripShell({ tripId, children }: { tripId: string; children: Reac
   if (!trip) return <main className="shell trip-shell"><p className="alert" role="alert">{error || "Could not load this trip."}</p><button onClick={() => void load()}>Try again</button><p><Link href="/">← Back to trips</Link></p></main>;
 
   const base = `/trips/${tripId}`;
-  return <TripContext.Provider value={{ trip, travelers, expenses, balances, suggestions, suggestionsError, payments, paymentsError, load }}>
+  return <TripContext.Provider value={{ trip, travelers, expenses, balances, suggestions, suggestionsError, payments, paymentsError, load, dataError: error }}>
     <main className="shell trip-shell">
       <header className="site-header"><Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link><AccountMenu /></header>
       <div className="trip-heading"><Link className="back-link" href="/">← All trips</Link><h1>{trip.name}</h1><p className="muted">{travelers.length} {travelers.length === 1 ? "traveler" : "travelers"} · TWD</p></div>
@@ -97,7 +98,7 @@ export function TripShell({ tripId, children }: { tripId: string; children: Reac
           <span>{name}</span>
         </Link>)}
       </nav>
-      {error ? <p className="alert" role="alert">{error}</p> : null}
+      {error ? <div><p className="alert" role="alert">{error}</p><button onClick={() => void load()}>Try again</button></div> : null}
       {children}
       <p className="dev-note">Private trip · Financial history is preserved</p>
     </main>

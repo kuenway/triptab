@@ -213,10 +213,10 @@ it("refreshes suggestions from the backend after an expense is saved", async () 
   vi.mocked(api.getSettlementSuggestions).mockResolvedValueOnce(suggestions).mockResolvedValueOnce({ ...suggestions, suggestions: [] });
   vi.mocked(api.addExpense).mockResolvedValue(expense);
   const view = render(<TripDashboard tripId={trip.id} />);
-  await screen.findByRole("region", { name: "Add an expense" });
+  fireEvent.click(await screen.findByRole("button", { name: "Add expense" }));
   fillExpense();
   fireEvent.click(screen.getByLabelText("Bob", { selector: "input[type=checkbox]" }));
-  fireEvent.click(screen.getByRole("button", { name: "Add expense" }));
+  fireEvent.click(within(screen.getByRole("dialog", { name: "Add expense" })).getByRole("button", { name: "Add expense" }));
   await waitFor(() => expect(api.getSettlementSuggestions).toHaveBeenCalledTimes(2));
   view.rerender(<AuthProvider><TripDashboard tripId={trip.id} section="balances" /></AuthProvider>);
   expect(await screen.findByText("Everyone is settled up.")).toBeTruthy();
@@ -435,7 +435,7 @@ it.each(["expense", "payment"] as const)("refreshes balances, suggestions and bo
   const view = render(<TripDashboard tripId={trip.id} section={kind === "expense" ? "expenses" : "balances"} />);
   const history = within(await screen.findByRole("region", { name: kind === "expense" ? "Current expenses" : "Current payments" }));
   fireEvent.click(history.getByRole("button", { name: "Edit" }));
-  const editor = within(history.getByRole("group", { name: `Edit ${kind}` }));
+  const editor = within(kind === "expense" ? screen.getByRole("dialog", { name: "Edit expense" }) : history.getByRole("group", { name: "Edit payment" }));
   fireEvent.change(editor.getByLabelText("Reason"), { target: { value: "Receipt" } });
   fireEvent.click(editor.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(2));
@@ -510,7 +510,7 @@ it("moves the original expense to history after saving an edit and counts only c
   render(<TripDashboard tripId={trip.id} />);
   const region = within(await screen.findByRole("region", { name: "Current expenses" }));
   fireEvent.click(await region.findByRole("button", { name: "Edit" }));
-  const editor = within(region.getByRole("group", { name: "Edit expense" }));
+  const editor = within(screen.getByRole("dialog", { name: "Edit expense" }));
   fireEvent.change(editor.getByLabelText("Description"), { target: { value: "Dinner updated" } });
   fireEvent.change(editor.getByLabelText("Amount (NT$)"), { target: { value: "1200" } });
   fireEvent.change(editor.getByLabelText("Reason"), { target: { value: "Receipt" } });

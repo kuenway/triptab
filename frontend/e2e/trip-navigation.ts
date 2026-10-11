@@ -5,3 +5,10 @@ export async function openSection(page: Page, name: "Expenses" | "Balances" | "T
   await link.click();
   await expect(link).toHaveAttribute("aria-current", "page");
 }
+
+export async function openExpense(page: Page) {
+  await page.getByRole("button", { name: "Add expense", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Add expense", exact: true });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}

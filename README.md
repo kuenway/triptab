@@ -100,8 +100,26 @@ the selected section:
 
 Expense/payment edit and void controls stay in their original functional sections,
 including expandable history and version links. History reuses that presentation;
-it is not a new activity timeline. Expense entry remains an expanded form. This
-navigation phase does not change accounting, permissions, or API contracts.
+it is not a new activity timeline. Expense entry and editing reuse one form in a responsive dialog: a bottom sheet
+on mobile and a centered dialog on desktop. This does not change accounting,
+permissions, or API contracts.
+
+## Expense ledger and entry
+
+Expenses shows current records first, grouped by the browser's local calendar day
+(Today, Yesterday, or a readable date). Within each group, records sort by occurred
+at descending, then recorded at descending, then UUID ascending for stable ties.
+Persisted timestamps are unchanged. Details disclose the stored allocations;
+participant counts and Your share come from stored split rows, never recomputed
+Equal splits. You is resolved by the authenticated account's linked member UUID.
+The compact balance summary uses the shared authoritative backend balance data.
+
+Use **+ Expense** to open entry; Edit opens the same form with prefilled values
+and a correction reason. New expenses default to the current local date/time,
+all Equal participants and the current member as payer; these remain editable.
+Closing a changed draft asks for confirmation. Drafts stay in memory only; saving
+closes the dialog and refreshes the ledger. Voided versions stay outside the
+current ledger, reachable through View edit history or the History section.
 
 ## Checks
 

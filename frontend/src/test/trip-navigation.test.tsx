@@ -40,7 +40,7 @@ beforeEach(() => {
 });
 
 it.each([
-  ["", "Expenses", ExpensesPage, ["Add an expense", "Current expenses"]],
+  ["", "Expenses", ExpensesPage, ["Expenses"]],
   ["/balances", "Balances", BalancesPage, ["Balances", "Suggested payments", "Record payment", "Current payments"]],
   ["/travelers", "Travelers", TravelersPage, ["Travelers"]],
   ["/history", "History", HistoryPage, ["History", "Expense history", "Payment history"]],
@@ -56,7 +56,7 @@ it.each([
     expect(nav.getByRole("link", { name })).toHaveProperty("href", "http://localhost:3000/trips/trip" + path);
   }
   expect(screen.queryByRole("tab")).toBeNull();
-  for (const name of ["Add an expense", "Current expenses", "Balances", "Suggested payments", "Record payment", "Current payments", "Travelers", "History", "Expense history", "Payment history"]) {
+  for (const name of ["Expenses", "Add an expense", "Current expenses", "Balances", "Suggested payments", "Record payment", "Current payments", "Travelers", "History", "Expense history", "Payment history"]) {
     expect(screen.queryAllByRole("heading", { name })).toHaveLength(headings.some((heading) => heading === name) ? 1 : 0);
   }
   expect(screen.getAllByRole("main")).toHaveLength(1);
@@ -66,11 +66,11 @@ it.each([
 
 it("retains shared Trip data across section navigation without decorative requests", async () => {
   const view = render(route(<ExpensesPage />));
-  await screen.findByRole("heading", { name: "Current expenses" });
+  await screen.findByRole("heading", { name: "Expenses" });
   navigation.pathname = "/trips/trip/balances";
   view.rerender(route(<BalancesPage />));
   expect(screen.getByRole("heading", { name: "Balances" })).toBeTruthy();
-  expect(screen.queryByRole("heading", { name: "Current expenses" })).toBeNull();
+  expect(screen.queryByRole("heading", { name: "Expenses" })).toBeNull();
   for (const request of [api.getTrip, api.listTravelers, api.listExpenses, api.getBalances, api.getSettlementSuggestions, api.listSettlements]) expect(request).toHaveBeenCalledOnce();
 });
 

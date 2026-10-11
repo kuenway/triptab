@@ -20,7 +20,8 @@ test("Trip routes survive reload, browser history and direct links at mobile and
   const tripUrl = page.url();
   const nav = page.getByRole("navigation", { name: "Trip sections" });
   await expect(nav.getByRole("link", { name: "Expenses", exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("region", { name: "Add an expense", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add expense", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Travelers", exact: true })).toHaveCount(0);
 
   await openSection(page, "Balances");
@@ -28,7 +29,7 @@ test("Trip routes survive reload, browser history and direct links at mobile and
   await page.reload();
   await expect(nav.getByRole("link", { name: "Balances", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("region", { name: "Balances", exact: true })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Add an expense", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add expense", exact: true })).toHaveCount(0);
   await openSection(page, "Travelers");
   await expect(page).toHaveURL(tripUrl + "/travelers");
   await openSection(page, "History");
