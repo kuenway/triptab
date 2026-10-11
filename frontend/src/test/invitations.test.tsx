@@ -41,7 +41,7 @@ it("creates a private copyable fragment link, closes it and never recovers old r
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
   render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} />);
   expect(await screen.findByText("No invitation")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Invite to TripTab" }));
+  fireEvent.click(screen.getByRole("button", { name: "Invite" }));
   const link = await screen.findByLabelText("Invitation link");
   expect(link).toHaveProperty("value", "http://localhost:3000/invite#token=" + token);
   fireEvent.click(screen.getByRole("button", { name: "Copy invite link" }));
@@ -77,9 +77,9 @@ it("shows creation, listing and clipboard errors safely", async () => {
   Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:vi.fn().mockRejectedValue(new Error("Denied"))}});
   render(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers} />);
   expect(await screen.findByRole("alert")).toHaveProperty("textContent","Could not load invitations. Try refreshing the trip.");
-  fireEvent.click(screen.getByRole("button",{name:"Invite to TripTab"}));
+  fireEvent.click(screen.getByRole("button",{name:"Invite"}));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent","traveler is already account-linked");
-  fireEvent.click(screen.getByRole("button",{name:"Invite to TripTab"}));
+  fireEvent.click(screen.getByRole("button",{name:"Invite"}));
   fireEvent.click(await screen.findByRole("button",{name:"Copy invite link"}));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent","Could not copy. Select and copy the invitation link above.");
 });
@@ -166,7 +166,7 @@ it.each(["owner","member"] as const)("shows invitation management only to %s whe
   vi.mocked(api.listSettlements).mockResolvedValue([]);vi.mocked(api.getSettlementSuggestions).mockResolvedValue({group_id:"trip",currency:"TWD",suggestions:[]});
   render(<AuthProvider><TripDashboard tripId="trip" /></AuthProvider>);
   const region=within(await screen.findByRole("region",{name:"Travelers"}));
-  await waitFor(()=>expect(region.queryByRole("button",{name:"Invite to TripTab"})!==null).toBe(role==="owner"));
+  await waitFor(()=>expect(region.queryByRole("button",{name:"Invite"})!==null).toBe(role==="owner"));
   expect(region.getByText(role==="owner"?"Guest":"Member")).toBeTruthy();
   if(role==="member")expect(api.listInvitations).not.toHaveBeenCalled();
 });
@@ -185,7 +185,13 @@ it("keeps one traveler row, with owner-only Guest actions and no accepted invita
   expect(await row.findByText("Pending invitation")).toBeTruthy();
   expect(screen.getAllByText("Bob")).toHaveLength(1);
   expect(row.getByText("Guest")).toBeTruthy();
-  expect(row.getByRole("button", { name: "Remove traveler" })).toBeTruthy();
+  const removal = row.getByRole("button", { name: "Remove traveler" });
+  expect(removal.textContent).toBe("");
+  expect(removal.getAttribute("title")).toBe("Remove traveler");
+  expect(removal.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  expect(row.getByRole("button", { name: "Invite" })).toBeTruthy();
+  expect(row.getByRole("button", { name: "Revoke invitation" })).toBeTruthy();
+  expect(row.queryByText("Remove traveler")).toBeNull();
   const owner = within(screen.getByRole("group", { name: "Invitation for Alice" }));
   expect(owner.queryByRole("button")).toBeNull();
   view.rerender(<TravelerInvitations canManage={true} tripId="trip" travelers={travelers.map((m) => m.id === "bob" ? { ...m, user_id: user.id } : m)} />);

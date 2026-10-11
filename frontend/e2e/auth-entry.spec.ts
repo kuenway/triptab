@@ -50,7 +50,7 @@ test("auth entry stays exclusive while checking, fits mobile, and resumes an inv
   await page.getByRole("button", { name: "Create trip" }).click();
   await page.getByLabel("Traveler name").fill("Bob");
   await page.getByRole("button", { name: "Add traveler" }).click();
-  await page.getByRole("button", { name: "Invite to TripTab" }).click();
+  await page.getByRole("button", { name: "Invite" }).click();
   const link = await page.getByLabel("Invitation link").inputValue();
   const context = await browser.newContext();
   try {

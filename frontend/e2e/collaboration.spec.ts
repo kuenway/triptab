@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-test("Bob claims his existing guest identity and Alice sees their shared ledger", async ({ page, browser }) => {
+test("Bob claims his existing guest identity and Alice sees their shared ledger", async ({ page, browser }, testInfo) => {
+  await page.setViewportSize({ width: 375, height: 812 });
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const password = "TripTab collaboration test 123";
   await page.goto("/register");
@@ -26,9 +27,29 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await expect(travelers.locator(".traveler-row").filter({ hasText: name })).toBeVisible();
   }
   const unused = travelers.getByRole("group", { name: "Invitation for Unused Guest", exact: true });
-  await unused.getByRole("button", { name: "Invite to TripTab" }).click();
+  const actions = unused.locator(".traveler-actions");
+  const inviteBox = await actions.getByRole("button", { name: "Invite", exact: true }).boundingBox();
+  const trash = actions.getByRole("button", { name: "Remove traveler" });
+  const trashBox = await trash.boundingBox();
+  expect(trashBox?.width).toBe(44);
+  expect(trashBox?.height).toBeGreaterThanOrEqual(44);
+  expect(trashBox?.y).toBe(inviteBox?.y);
+  await expect(trash).toHaveText("");
+  await expect(trash).toHaveAttribute("title", "Remove traveler");
+  await page.getByRole("region", { name: "Travelers", exact: true }).screenshot({ path: testInfo.outputPath("guest-actions-mobile.png") });
+  await unused.getByRole("button", { name: "Invite" }).click();
   const unusedLink = await travelers.getByLabel("Invitation link").inputValue();
-  await unused.getByRole("button", { name: "Remove traveler" }).click();
+  await unused.getByRole("button", { name: "Close invite link" }).click();
+  const pendingBoxes = await actions.getByRole("button").evaluateAll((buttons) => buttons.map((button) => ({ y: button.getBoundingClientRect().y, height: button.getBoundingClientRect().height })));
+  expect(new Set(pendingBoxes.map((box) => box.y)).size).toBe(1);
+  expect(pendingBoxes.every((box) => box.height >= 44)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole("region", { name: "Travelers", exact: true }).screenshot({ path: testInfo.outputPath("pending-actions-mobile.png") });
+  await actions.getByRole("button", { name: "Revoke invitation" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(trash).toBeFocused();
+  expect(await trash.evaluate((button) => getComputedStyle(button).outlineStyle)).toBe("solid");
+  await page.keyboard.press("Enter");
   await unused.getByRole("button", { name: "Confirm removal" }).click();
   await expect(unused).toHaveCount(0);
   const unavailable = await page.request.post("/api/v1/invitations/preview", { data: { token: new URL(unusedLink).hash.slice(7) }, headers: { Origin: "http://127.0.0.1:3100" } });
@@ -55,7 +76,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
   await expect(travelers.getByRole("alert")).toContainText("financial history");
   await expect(bobRow).toBeVisible();
   await bobRow.getByRole("button", { name: "Cancel removal" }).click();
-  await bobRow.getByRole("button", { name: "Invite to TripTab" }).click();
+  await bobRow.getByRole("button", { name: "Invite" }).click();
   const link = await travelers.getByLabel("Invitation link").inputValue();
   const parsed = new URL(link);
   expect(parsed.pathname).toBe("/invite"); expect(parsed.search).toBe(""); expect(parsed.hash).toMatch(/^#token=[A-Za-z0-9_-]{43}$/);
@@ -92,7 +113,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     const bobTravelers = bob.getByRole("region", { name: "Travelers", exact: true });
     await expect(bobTravelers.locator(".traveler-row").filter({ hasText: "Bob" })).toContainText("Member");
     await expect(bobTravelers.locator(".traveler-row").filter({ hasText: "Charlie" })).toContainText("Guest");
-    await expect(bobTravelers.getByRole("button", { name: "Invite to TripTab" })).toHaveCount(0);
+    await expect(bobTravelers.getByRole("button", { name: "Invite" })).toHaveCount(0);
     expect(await (await bob.request.get(`/api/v1/groups/${tripId}/expenses`)).json()).toEqual(before);
     await expect(bob.getByRole("region", { name: "Balances", exact: true }).locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$600");
     await bob.getByRole("link", { name: "All trips", exact: false }).click();
@@ -115,7 +136,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await expect(bobRow.getByText("Accepted invitation")).toHaveCount(0);
     await page.setViewportSize({ width: 375, height: 812 });
     const charlieRow = travelers.getByRole("group", { name: "Invitation for Charlie", exact: true });
-    await expect(charlieRow.getByRole("button", { name: "Invite to TripTab" })).toBeVisible();
+    await expect(charlieRow.getByRole("button", { name: "Invite" })).toBeVisible();
     expect(await charlieRow.evaluate((row) => row.scrollWidth <= row.clientWidth)).toBe(true);
     await expect(page.getByRole("region", { name: "Current expenses", exact: true })).toContainText("Bob records Charlie's taxi");
     await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("gets back NT$540");

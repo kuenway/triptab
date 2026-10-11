@@ -63,7 +63,10 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .traveler-identity small { display: block; margin-top: 4px; }
 .traveler-actions, .traveler-detail { grid-column: 2 / -1; min-width: 0; }
 .traveler-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.traveler-actions button { padding: 7px 10px; font-size: .8rem; }
+.traveler-actions button { min-height: 44px; border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; background: white; color: var(--teal-dark); font-size: .8rem; font-weight: 600; }
+.traveler-actions .remove-traveler { flex: 0 0 44px; width: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: #8b3025; }
+.traveler-actions .remove-traveler:hover:not(:disabled) { background: #fff0ed; color: #8b3025; }
+.traveler-actions button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 .person-dot { width: 30px; height: 30px; border-radius: 50%; font-size: .85rem; }
 .inline-form { display: grid; grid-template-columns: 1fr auto; gap: 9px; }
 .form-wide { grid-column: 1 / -1; }
