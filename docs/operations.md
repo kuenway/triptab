@@ -171,9 +171,10 @@ Expired/revoked session cleanup remains deferred.
 
 ## Backup and recovery
 
-Use PostgreSQL 18 native tools for the Neon production server. PostgreSQL 17
-`pg_dump` cannot export a PostgreSQL 18 server. The local Compose drill still uses
-its container's PostgreSQL 17 tools; local volumes are unchanged. `pg_dump -Fc`
+Use PostgreSQL 18 native tools for both the Neon production server and local
+Compose cluster. Local `psql`, `pg_dump` and `pg_restore` run inside the
+`postgres:18-alpine` Compose container; host PostgreSQL packages are not required.
+The preserved historical volumes are described in [persistence](persistence.md#triptab-local-naming-and-preserved-legacy-data). `pg_dump -Fc`
 creates a consistent logical archive while PostgreSQL runs. Never copy live Docker
 volume files as a backup. Archives contain account hashes, session material and
 private financial data: encrypt them, restrict access, store off-host, and define
@@ -210,6 +211,34 @@ Before routing real traffic to a recovered database, revoke restored login sessi
 so an older backup cannot resurrect a previously logged-out session. Require users
 to log in again. This changes auth revocation metadata only, never financial history.
 The synthetic drill verifies exact session preservation using an already-revoked session.
+
+For a real **local** development backup, use the active container's version-matched
+clients from the repository root. Store the archive outside Git:
+
+```sh
+umask 077
+backup_dir="$HOME/.config/triptab/backups"
+mkdir -p "$backup_dir"
+chmod 700 "$backup_dir"
+backup_file="$backup_dir/triptab-$(date +%Y%m%d-%H%M%S).dump"
+docker compose exec -T db pg_dump -U triptab -Fc triptab > "$backup_file"
+chmod 600 "$backup_file"
+```
+
+Restore only into a newly created **separate local** database, never the live one:
+
+```sh
+docker compose exec -T db createdb -U triptab triptab_restore_test
+docker compose exec -T db pg_restore -U triptab --exit-on-error --no-owner --no-acl --dbname=triptab_restore_test < "$backup_file"
+```
+
+Use protected service/password files and PostgreSQL 18 client containers for
+remote operator tooling; never place a credential URL in command arguments.
+The commands above use local Unix-socket authentication inside Compose and do not
+print a password. A pre-switch complete-cluster `pg_dumpall` SQL archive has a
+different format from this custom archive; restore it with `psql` only into an
+isolated local recovery cluster after reviewing roles/database-name conflicts.
+Do not feed plain SQL to `pg_restore` or restore historical sessions into production.
 
 Repeat the synthetic **local Compose** drill from `backend/`:
 

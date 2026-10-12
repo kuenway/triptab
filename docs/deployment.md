@@ -12,9 +12,10 @@ The approved base cost is **$0/month**: Vercel Hobby, one Render Free web servic
 in Singapore (512 MB, 0.1 CPU), and one Neon Free project in AWS Singapore
 (`aws-ap-southeast-1`) with PostgreSQL **18**, database `triptab`, and a dedicated
 generated-password role owning that database. The existing Neon project uses
-PostgreSQL 18. Local Compose remains PostgreSQL 17; backend CI covers both majors,
-and the production-build browser flow uses PostgreSQL 18. Do not replace the local
-volume to change its major version.
+PostgreSQL 18. Local Compose, backend CI, browser CI and disposable test databases
+all target PostgreSQL 18. Local/CI images use `postgres:18-alpine`; provider patch
+versions may differ within major 18. Local alignment uses a new volume and preserves
+older clusters; see [volume preservation](persistence.md#triptab-local-naming-and-preserved-legacy-data).
 Do not create Render PostgreSQL, enable paid add-ons, upgrade plans, or add a
 payment method to bypass a free-plan limit without explicit approval. Check the
 actual organization/workspace billing tier and overage controls before provisioning;
@@ -126,9 +127,9 @@ paid upgrade is permitted.
 
 Verify the project's actual restore window after creation; pricing alone is not
 backup evidence. After smoke data, produce a native PostgreSQL 18 `pg_dump -Fc`
-logical export and validate a restore into an empty separate database. PostgreSQL
-17 `pg_dump` cannot export an 18 server; use 18 clients for production and retain
-17 clients for the local Compose drill. Keep the destination on major version 18.
+logical export and validate a restore into an empty separate database. Use
+PostgreSQL 18 clients for production and the local Compose drill. Keep the
+destination on major version 18.
 Create the destination explicitly; do not rely on dump/restore `--create` or `pg_dumpall` with
 Neon. Use `pg_restore --no-owner --no-acl --exit-on-error`. Revoke restored sessions
 before routing traffic to recovered data. Keep archives encrypted, restricted and
@@ -264,7 +265,7 @@ Provider references: [Render Blueprint schema](https://render.com/docs/blueprint
 [release commands](https://render.com/docs/deploys),
 [Render Free limitations](https://render.com/docs/free),
 [Neon TLS](https://neon.com/docs/connect/connect-securely),
-[libpq system trust](https://www.postgresql.org/docs/17/libpq-connect.html#LIBPQ-CONNECT-SSLROOTCERT),
+[libpq system trust](https://www.postgresql.org/docs/18/libpq-connect.html#LIBPQ-CONNECT-SSLROOTCERT),
 [Vercel external rewrite cache changes](https://vercel.com/changelog/vercels-cdn-now-respects-cache-control-headers-from-external-origins-by-default),
 [cache header priority](https://vercel.com/docs/caching/cache-control-headers), and
 [manual Git deployment configuration](https://vercel.com/docs/project-configuration/git-configuration).

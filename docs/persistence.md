@@ -25,6 +25,10 @@ algorithm is not duplicated in SQL.
 
 ## Local database and migrations
 
+PostgreSQL 18 is canonical for local development, integration/browser tests,
+disposable databases and CI. Compose and both CI services use `postgres:18-alpine`.
+The application migration head remains `20261011_0005`; no schema change is needed.
+
 The repository root `.env.example` contains development-only connection values.
 Copy it to `.env` if this is a new checkout, or add its `DATABASE_URL` and
 `TEST_DATABASE_URL` and local authentication settings to an existing `.env`.
@@ -194,24 +198,49 @@ M12 listing responses require a non-null target and cannot read detached rows.
 
 ## TripTab local naming and preserved legacy data
 
-Compose now explicitly uses project name `triptab`, database/user `triptab`, and
-volume `triptab_postgres_data`. Existing `.env` files are not overwritten: update
-their local POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DATABASE_URL and
-TEST_DATABASE_URL together using `.env.example`. Tests use `triptab_test`, browser
-tests use `triptab_e2e_test`; all three are separate databases. Local Compose
-remains PostgreSQL 17; CI tests both 17 and 18, and release readiness uses 18.
+Compose uses project name `triptab`, database/user `triptab`, port 5433, and
+PostgreSQL 18. Its active volume is `triptab_postgres18_data`, mounted at
+`/var/lib/postgresql`; the image initializes `PGDATA=/var/lib/postgresql/18/docker`.
+The major-specific directory/mount follows the [official image policy](https://hub.docker.com/_/postgres).
+Existing `.env` files are not overwritten: keep POSTGRES_USER, POSTGRES_PASSWORD,
+POSTGRES_DB, DATABASE_URL and TEST_DATABASE_URL consistent with `.env.example`.
+Integration tests use `triptab_test`, browser tests use `triptab_e2e_test`; all
+three are separate databases on the same local server. CI supplies separate
+PostgreSQL 18 service instances and never connects to local or production data.
 
-Existing local development data remains in `splitwise_postgres_data`. It is
-intentionally preserved, not renamed or automatically copied into the new volume.
-The new volume starts empty and requires migrations. If the previous container
-owns port 5433, stop it without deleting it or its volume before starting TripTab:
+M18A preserves both historical PostgreSQL 17 data volumes:
+
+| Volume | Purpose |
+| --- | --- |
+| `triptab_postgres18_data` | Active PostgreSQL 18 development/test cluster |
+| `triptab_postgres_data` | Preserved previous PostgreSQL 17 TripTab cluster |
+| `splitwise_postgres_data` | Preserved legacy PostgreSQL 17 Splitwise cluster |
+
+Never mount either historical volume into the active service or start a newer
+major against its data directory. Do not delete these volumes, copy their raw
+files into the new volume, or use `docker compose down -v`. The stopped historical
+`splitwise-db-1` container may remain; stop it if it still owns port 5433.
+`docker compose up -d db` recreates `triptab-db-1` with the new volume without
+removing either preserved volume.
+
+Before the local switch, M18A took a complete `pg_dumpall` plain-SQL logical
+backup outside Git under `~/.config/triptab/backups/m18a-pg17-*/`, with directory
+mode 0700 and file mode 0600. The development database had no application rows;
+the browser database contained disposable test fixtures. The new cluster is
+fresh-started rather than restoring those fixtures. The backup and old volumes
+remain available for separately reviewed logical recovery. Archives include
+credential/session material and private history; restrict access and encrypt
+before transporting/off-host storage. Never publish backup contents.
+
+Initialize the fresh active development database with the normal commands above,
+then create the separate test/browser databases and migrate them. Verify from
+`backend/`:
 
 ```sh
-docker stop splitwise-db-1
-docker compose up -d db
+uv run --env-file ../.env alembic current
+uv run --env-file ../.env alembic check
 ```
 
-Do not use `docker compose down -v` or delete the legacy volume. For needed data,
-review a native PostgreSQL dump/restore separately; copying a live volume is not
-a backup. Recovery tooling now selects the TripTab Compose service/user. Both old
-and new known example passwords remain rejected in production configuration.
+Expected revision: `20261011_0005`. Recovery uses native logical dump/restore,
+not filesystem copying; see [operations](operations.md#backup-and-recovery).
+Both old and new known example passwords remain rejected in production configuration.

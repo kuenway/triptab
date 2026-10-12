@@ -7,12 +7,9 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        postgres: [17, 18]
     services:
       postgres:
-        image: postgres:${{ matrix.postgres }}-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: triptab
           POSTGRES_PASSWORD: triptab_ci_only

@@ -10,7 +10,7 @@ financial history in PostgreSQL and owns the accounting.
 - Git
 - Node.js 22 (22.22.2 or newer within major 22; required by the locked development tooling) and npm 10 or newer; use `nvm use` with the root `.nvmrc`
 - Python 3.11 and [uv](https://docs.astral.sh/uv/)
-- Docker with Compose, for local PostgreSQL
+- Docker with Compose, for local PostgreSQL 18 (`postgres:18-alpine`)
 
 ## Local setup
 
@@ -61,8 +61,10 @@ history blocks removal, including voided records and zero allocations. Invitatio
 audit remains stored; linked Member removal is deferred. See [invitation and
 removal contracts](docs/invitations.md).
 
-Local development now uses TripTab database/volume names. Existing local data stays
-in `splitwise_postgres_data`; the new `triptab_postgres_data` volume starts empty.
+Local development uses PostgreSQL 18 with database/user `triptab` and active volume
+`triptab_postgres18_data`. Previous data stays in the preserved
+`triptab_postgres_data` and `splitwise_postgres_data` volumes; neither is mounted
+into the new container. The new volume starts empty and needs Alembic migrations.
 See [local naming transition](docs/persistence.md#triptab-local-naming-and-preserved-legacy-data)
 before starting Compose if an older container already owns port 5433.
 
@@ -144,8 +146,8 @@ TRIPTAB_API_ORIGIN=http://127.0.0.1:8000 npm run build
 ```
 
 From the repository root, stop PostgreSQL with `docker compose down`. Its named
-volume retains local data. Only remove the volume deliberately when the data is
-no longer needed.
+volume retains local data. Do not delete the preserved legacy volumes or use
+`docker compose down -v` during this transition.
 
 See [foundation decisions](docs/decisions.md) for the approved domain constraints.
 For database migration, transaction, and integration-test commands, see
@@ -158,7 +160,7 @@ expenses, current/stale settlement confirmation, editing/deletion UX, persisted 
 logout/login, Guest claiming, shared ledgers, isolation between accounts, and
 Trip section navigation across reloads, browser history, and mobile/desktop layouts.
 They use a separate local `*_e2e_test` database in the
-Compose PostgreSQL instance; it refuses the normal development or integration-test
+Compose PostgreSQL 18 instance; it refuses the normal development or integration-test
 database. The test writes real records, so use this dedicated database only for
 browser testing. With Compose running, from the repository root:
 
