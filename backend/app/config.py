@@ -52,6 +52,50 @@ class Settings(BaseModel):
         default=60, ge=1, le=3600, alias="TRIPTAB_AUTH_RATE_WINDOW"
     )
 
+    password_reset_email_provider: Literal["disabled", "resend"] = Field(
+        default="disabled", alias="TRIPTAB_PASSWORD_RESET_EMAIL_PROVIDER"
+    )
+    resend_api_key: SecretStr | None = Field(default=None, alias="RESEND_API_KEY")
+    password_reset_from_email: str | None = Field(
+        default=None, alias="TRIPTAB_PASSWORD_RESET_FROM_EMAIL"
+    )
+    frontend_base_url: str | None = Field(
+        default=None, alias="TRIPTAB_FRONTEND_BASE_URL"
+    )
+
+    @property
+    def reset_email_configured(self) -> bool:
+        return bool(
+            self.password_reset_email_provider == "resend"
+            and self.resend_api_key
+            and self.resend_api_key.get_secret_value().strip()
+            and self.password_reset_from_email
+            and self.frontend_base_url
+        )
+
+    @field_validator("password_reset_from_email")
+    @classmethod
+    def reset_sender_address(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        from email_validator import EmailNotValidError, validate_email
+
+        try:
+            return validate_email(value, check_deliverability=False).normalized
+        except EmailNotValidError:
+            raise ValueError("reset sender must be a valid email address") from None
+
+    @field_validator("frontend_base_url")
+    @classmethod
+    def reset_frontend(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        # Use the existing origin validator; links never derive from request Host.
+        origins = cls.origins(value)
+        if len(origins) != 1:
+            raise ValueError("reset frontend must be one explicit HTTP(S) origin")
+        return origins[0]
+
     @field_validator("database_url", mode="before")
     @classmethod
     def provider_database_url(cls, value: object) -> object:
@@ -121,6 +165,13 @@ class Settings(BaseModel):
         if self.cookie_name.startswith("__Secure-") and not self.cookie_secure:
             raise ValueError("__Secure- cookies require Secure")
         if self.environment == "production":
+            if self.frontend_base_url and (
+                not self.frontend_base_url.startswith("https://")
+                or self.frontend_base_url not in self.allowed_origins
+            ):
+                raise ValueError(
+                    "production reset frontend must be an allowed HTTPS origin"
+                )
             if not self.cookie_secure or self.debug or self.log_level == "DEBUG":
                 raise ValueError(
                     "production requires Secure cookies and debug disabled"

@@ -27,7 +27,7 @@ algorithm is not duplicated in SQL.
 
 PostgreSQL 18 is canonical for local development, integration/browser tests,
 disposable databases and CI. Compose and both CI services use `postgres:18-alpine`.
-The application migration head is `20261012_0006`; M19A makes the existing
+The application migration head is `20261012_0007`; M19A makes the existing
 account display name nullable without changing stored names.
 
 The repository root `.env.example` contains development-only connection values.
@@ -242,6 +242,24 @@ uv run --env-file ../.env alembic current
 uv run --env-file ../.env alembic check
 ```
 
-Expected revision: `20261012_0006`. Recovery uses native logical dump/restore,
+Expected revision: `20261012_0007`. Recovery uses native logical dump/restore,
 not filesystem copying; see [operations](operations.md#backup-and-recovery).
 Both old and new known example passwords remain rejected in production configuration.
+
+
+## Password reset tokens (M19B)
+
+Revision 20261012_0007 adds password_reset_tokens only, after the deployed 0006.
+No User/session/Trip/financial rows are backfilled or changed by upgrade. UUID
+identity, restricted User FK, unique SHA-256 hash, UTC timestamps, 30-minute expiry,
+used_at and revoked_at record lifecycle without a redundant status. Checks enforce
+hash shape, timestamp order and mutually exclusive use/revocation. A trigger
+prevents reassignment of ID, User ownership or digest. User_id is indexed for
+replacement/invalidation; the unique hash index handles secret lookup.
+
+User-first localized row locks serialize requests, use and failed-delivery
+invalidation with login/change-password. Downgrade drops only reset-token rows
+and its identity-protection function; it does not reverse successful password or
+session changes. Use downgrade only on disposable/reviewed databases. Local tests
+verify populated 0006 -> 0007 preservation, fresh migration, check and re-upgrade
+on PostgreSQL 18. Production remains at 0006 until a separate approved release.

@@ -328,6 +328,42 @@ class AuthSessionRow(Base):
     )
 
 
+class PasswordResetTokenRow(Base):
+    """Only a digest is persisted; revoked_at distinguishes replacement from use."""
+
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_sha256"),
+        CheckConstraint("expires_at > created_at", name="expiration_after_creation"),
+        CheckConstraint(
+            "used_at IS NULL OR (used_at >= created_at AND used_at < expires_at)",
+            name="used_time",
+        ),
+        CheckConstraint(
+            "revoked_at IS NULL OR revoked_at >= created_at", name="revoked_time"
+        ),
+        CheckConstraint(
+            "used_at IS NULL OR revoked_at IS NULL", name="one_terminal_state"
+        ),
+        Index("ix_password_reset_tokens_user_id", "user_id"),
+    )
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class TripInvitationRow(Base):
     """Account claiming permission; never contains the raw bearer token."""
 

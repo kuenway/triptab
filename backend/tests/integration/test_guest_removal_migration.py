@@ -148,7 +148,7 @@ def test_populated_invitation_audit_upgrade_and_safe_downgrade(pg_engine):
         with target.connect() as c:
             assert (
                 c.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20261012_0006"
+                == "20261012_0007"
             )
             assert (
                 c.scalar(
@@ -202,7 +202,12 @@ def test_populated_invitation_audit_upgrade_and_safe_downgrade(pg_engine):
             )
             trips.remove_guest_member(group.id, guest.id)
             assert (
-                InvitationService(s, context.user).list(group.id)[0].status == "revoked"
+                next(
+                    row
+                    for row in InvitationService(s, context.user).list(group.id)
+                    if row.id == invitation.id
+                ).status
+                == "revoked"
             )
             s.rollback()
             with pytest.raises(ResourceNotFound):
@@ -213,7 +218,7 @@ def test_populated_invitation_audit_upgrade_and_safe_downgrade(pg_engine):
         with target.connect() as c:
             assert (
                 c.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20261012_0006"
+                == "20261012_0007"
             )
             audit = c.execute(
                 text(

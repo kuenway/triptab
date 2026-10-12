@@ -277,3 +277,33 @@ revision `20261011_0004`, but the deployed M11 baseline and head `20261003_0003`
 remain unchanged. No M12 production resources, data or configuration are changed.
 Release only after review, push, green CI and explicit production migration
 approval, then manual Render/Vercel release; automatic deployment stays disabled.
+
+
+## M19B password recovery release setup (not performed by implementation)
+
+Before release, arrange a transactional Resend account, verify a sending domain
+and sender externally, and supply a restricted send-only API key securely to
+Render. Domain verification/DNS/provider accounts are operator setup tasks;
+this milestone neither performs them nor requests keys. Check plan/cost limits
+before any provider signup; no paid upgrade or account is authorized here.
+
+Backend-only required variables:
+
+| Variable | Required value |
+| --- | --- |
+| TRIPTAB_PASSWORD_RESET_EMAIL_PROVIDER | resend |
+| RESEND_API_KEY | Provider secret; no repository or frontend copy |
+| TRIPTAB_PASSWORD_RESET_FROM_EMAIL | Verified sender address |
+| TRIPTAB_FRONTEND_BASE_URL | Exact allowed HTTPS production frontend origin |
+
+Use the original fragment-bearing reset URL; disable click/open tracking for auth
+mail and do not add redirect/analytics wrapping that could expose the bearer.
+Resend accepts a minimal plain-text payload; no marketing template is involved.
+Missing configuration is operationally visible but intentionally indistinguishable
+in the public forgot-password response. Do not interpret 202 as proof of delivery.
+
+After implementation approval/push/green CI, a separately approved release must
+apply 20261012_0007 after 0006, verify, deploy the exact backend commit, then deploy
+frontend and run approved disposable real-delivery smoke. Existing Free/Hobby
+plans, manual deployment ordering, TLS and provider resources remain unchanged.
+Do not deploy M19B or migrate production as part of local implementation.

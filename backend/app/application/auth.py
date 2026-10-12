@@ -18,6 +18,9 @@ from app.domain import User
 from app.persistence.mappers import user_from_row
 from app.persistence.models import AuthSessionRow, UserRow
 
+PASSWORD_MIN_LENGTH = 12
+PASSWORD_MAX_LENGTH = 128
+
 PASSWORD_HASHER = PasswordHasher()  # Library defaults use Argon2id.
 # ponytail: two Argon2 operations per process; revisit when backend memory grows.
 PASSWORD_WORK = BoundedSemaphore(2)
@@ -36,6 +39,10 @@ class IncorrectPassword(Exception):
     """Authenticated password confirmation failed without ending the session."""
 
 
+class PasswordPolicyError(Exception):
+    """Safe validation feedback, without submitted passwords or credential hashes."""
+
+
 class PermissionDenied(Exception):
     """An authenticated group member lacks permission for this operation."""
 
@@ -50,6 +57,26 @@ class AuthContext:
 
 def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def validate_password_policy(
+    password: str, normalized_email: str, current_password_hash: str | None = None
+) -> None:
+    """New credentials only; preserve the exact password, including spaces/Unicode."""
+    if not PASSWORD_MIN_LENGTH <= len(password) <= PASSWORD_MAX_LENGTH:
+        raise PasswordPolicyError("Use 12–128 characters for your password.")
+    # Normalize only for email comparison, never for hashing or authentication.
+    if password.strip().lower() == normalized_email.strip().lower():
+        raise PasswordPolicyError("Choose a password different from your email.")
+    if current_password_hash is not None:
+        with PASSWORD_WORK:
+            try:
+                PASSWORD_HASHER.verify(current_password_hash, password)
+            except (VerificationError, InvalidHashError):
+                return
+        raise PasswordPolicyError(
+            "Choose a new password different from your current password."
+        )
 
 
 class AuthService:
@@ -105,6 +132,7 @@ class AuthService:
         self, email: str, password: str, display_name: str, old_token: str | None = None
     ) -> tuple[AuthContext, str]:
         normalized = email.strip().lower()
+        validate_password_policy(password, normalized)
         # The domain checks the safe user fields; credentials stay in infrastructure.
         user = User(uuid4(), normalized, display_name.strip())
         with PASSWORD_WORK:
@@ -205,6 +233,8 @@ class AuthService:
                     PASSWORD_HASHER.verify(user.password_hash, current_password)
                 except (VerificationError, InvalidHashError):
                     raise IncorrectPassword("Current password is incorrect.") from None
+            validate_password_policy(new_password, user.email, user.password_hash)
+            with PASSWORD_WORK:
                 user.password_hash = PASSWORD_HASHER.hash(new_password)
             self.session.execute(
                 update(AuthSessionRow)

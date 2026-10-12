@@ -174,6 +174,7 @@ def main() -> None:
             "settlement_voids": 2,
             "auth_sessions": 1,
             "trip_invitations": 0,
+            "password_reset_tokens": 0,
         }
         print(
             "PASS: clean/populated migrations; native dump/restore; all rows, roles, "

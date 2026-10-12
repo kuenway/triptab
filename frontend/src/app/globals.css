@@ -328,3 +328,6 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .account-link { display: flex; align-items: center; min-height: 44px; padding: 8px 12px; margin-bottom: 8px; border-bottom: 1px solid var(--line); font-weight: 600; }
 .account-name { font-weight: 700; overflow-wrap: anywhere; }
 .account-shell a:focus-visible, .account-shell button:focus-visible, .account-menu a:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+
+.recovery-panel a:focus-visible, .recovery-panel button:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+.recovery-panel .button-link { display: inline-flex; align-items: center; min-height: 44px; }

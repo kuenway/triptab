@@ -13,7 +13,11 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_auth_session, get_session
+from app.api.dependencies import (
+    get_auth_session,
+    get_recovery_session_factory,
+    get_session,
+)
 from app.main import app
 from app.persistence.database import make_engine
 
@@ -91,6 +95,13 @@ def raw_client(db_session: Session, monkeypatch) -> Iterator[TestClient]:
         bind=connection,
         join_transaction_mode="create_savepoint",
         expire_on_commit=False,
+    )
+    app.dependency_overrides[get_recovery_session_factory] = lambda: (
+        lambda: Session(
+            bind=connection,
+            join_transaction_mode="create_savepoint",
+            expire_on_commit=False,
+        )
     )
     try:
         with TestClient(app, headers={"Origin": "http://testserver"}) as client:

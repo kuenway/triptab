@@ -159,7 +159,7 @@ compatibility. The existing timeout/uncertain-write guidance still applies.
 
 ## Authentication limits and retention
 
-Login, registration and password change share a locked, process-local fixed-window
+Login, registration, password change and password recovery share a locked, process-local fixed-window
 counter, per IP and globally. Rejections return 429 and `Retry-After` before
 password work. The global cap bounds tracked IP memory. Window boundaries allow a double burst;
 restarts reset counts. This supports the initial **one-worker, single-instance**
@@ -267,7 +267,7 @@ validates mechanics, not a configured production backup schedule or recovery SLA
 - Validate a restore and compare history; document who performs recovery.
 
 Application containers, distributed limiting, cleanup workers, monitoring
-SaaS, strict-script CSP, reset/verification/OAuth, idempotency, ledger
+SaaS, strict-script CSP, email verification/OAuth, idempotency, ledger
 versions and multi-currency remain deferred. Reassess dependency advisories at
 deployment; a vulnerability scan is not a security guarantee.
 
@@ -278,3 +278,30 @@ deployment; a vulnerability scan is not a security guarantee.
 Do not run the new revision on Neon or change Render/Vercel until review, push,
 green CI and explicit production migration approval. The existing manual migration
 before deployment sequence and all production security/configuration remain.
+
+
+## Password recovery operations (M19B)
+
+Configure backend-only `TRIPTAB_PASSWORD_RESET_EMAIL_PROVIDER=resend`,
+`RESEND_API_KEY`, `TRIPTAB_PASSWORD_RESET_FROM_EMAIL` (verified sender), and
+`TRIPTAB_FRONTEND_BASE_URL` (one explicit allowed HTTPS origin). Keys belong in
+provider secret storage, never frontend variables, Git, shell arguments or logs.
+`disabled` is the default for local development; tests inject a sender and need
+no provider credentials. Missing/partial production email configuration keeps the
+existing backend commands usable but emits `password_reset_email` /
+`missing_configuration` at startup; recovery cannot send until configured.
+
+The public response is always generic, including missing-config/provider failures.
+Post-response delivery failure emits `delivery_failure` with request ID and
+revokes only that delivery's unused token. Failed revocation emits
+`invalidation_failure`. Inspect categories/request IDs; never log provider
+responses, bodies, recipients, raw tokens, digests, passwords or credentials.
+Shared IP/global limits remain, with a three-request-per-email-target limit in
+the same window; targets are hashed and include unknown addresses. Restart resets
+these process-local counters. No durable email retry or delivery guarantee exists.
+
+Logical backups now include password_reset_tokens. Recovery after restoring a
+backup must revoke outstanding reset tokens as well as all restored sessions,
+before routing traffic to the restored database; an old bearer must not regain
+validity through restoration. Keep this an explicitly approved recovery action,
+not a startup migration or a financial-history deletion.

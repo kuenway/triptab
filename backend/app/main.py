@@ -17,9 +17,11 @@ from app.application.auth import (
     AccountConflict,
     AuthenticationRequired,
     IncorrectPassword,
+    PasswordPolicyError,
     PermissionDenied,
 )
 from app.application.invitations import InvitationConflict
+from app.application.recovery import InvalidResetToken
 from app.application.service import (
     FinancialConflict,
     MemberNameConflict,
@@ -40,6 +42,8 @@ CLIENT_ERRORS = {
     PermissionDenied: (403, "permission"),
     AccountConflict: (409, "account_conflict"),
     IncorrectPassword: (422, "current_password"),
+    PasswordPolicyError: (422, "password_policy"),
+    InvalidResetToken: (400, "reset_unavailable"),
     ResourceNotFound: (404, "resource_not_found"),
     FinancialConflict: (409, "financial_conflict"),
     MemberRemovalConflict: (409, "member_conflict"),
@@ -93,7 +97,20 @@ async def rate_limited(request: Request, error: RateLimited) -> JSONResponse:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    configure_logging(get_settings())
+    settings = get_settings()
+    configure_logging(settings)
+    if settings.environment == "production" and not settings.reset_email_configured:
+        from app.operations import logger
+
+        logger.error(
+            "password recovery email is not configured",
+            extra={
+                "fields": {
+                    "event": "password_reset_email",
+                    "error_category": "missing_configuration",
+                }
+            },
+        )
     try:
         yield
     finally:

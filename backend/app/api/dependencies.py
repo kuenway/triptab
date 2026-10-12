@@ -34,6 +34,16 @@ def get_auth_session() -> Session:
     return _session_factory()()
 
 
+def get_recovery_session_factory() -> sessionmaker[Session]:
+    return _session_factory()
+
+
+def get_password_reset_email_sender():
+    from app.email import ResendPasswordResetEmailSender
+
+    return ResendPasswordResetEmailSender(get_settings())
+
+
 SessionDependency = Annotated[Session, Depends(get_session)]
 AuthSessionDependency = Annotated[Session, Depends(get_auth_session)]
 

@@ -203,3 +203,11 @@ active records; expandable history shows previous/voided versions, reasons,
 timestamps and replacement links. **View edit history** opens the previous version. See
 [accounting policies](docs/accounting.md) and
 [correction APIs and migration notes](docs/persistence.md).
+
+
+Password recovery is available through Sign in → Forgot password. It uses hashed,
+30-minute, single-use email tokens and revokes all sessions after reset. Local
+email delivery is disabled by default; tests use an in-memory sender. Resend
+production setup and deployment are separate approval steps. See
+[authentication](docs/authentication.md#password-recovery-m19b) and
+[release setup](docs/deployment.md#m19b-password-recovery-release-setup-not-performed-by-implementation).

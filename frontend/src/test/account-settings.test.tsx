@@ -85,3 +85,12 @@ it("guards duplicate password submissions and uncertain responses without retry"
   expect(screen.queryByRole("button", { name: "Change password" })).toBeNull(); fireEvent.click(screen.getByRole("button", { name: "Clear password fields" }));
   expect(screen.getByLabelText("Current password")).toHaveProperty("value", "");
 });
+
+it.each(["Choose a password different from your email.", "Choose a new password different from your current password."])("Change password associates policy rejection %s with the new field", async message => {
+  vi.mocked(api.changePassword).mockRejectedValue(new ApiError(message, 422)); account(); fireEvent.submit(await passwords());
+  await screen.findByText(message); const input = screen.getByLabelText("New password");
+  expect(input).toHaveProperty("value", "New password 456");
+  expect(input.getAttribute("aria-describedby")).toBe("password-error");
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  expect(screen.queryByRole("heading", { name: "Sign in" })).toBeNull();
+});

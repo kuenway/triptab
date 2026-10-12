@@ -50,6 +50,15 @@ test("account names default only new Trip identities and password change revokes
     await second.getByRole("button", { name: "Sign in", exact: true }).click(); await expect(second.getByRole("heading", { name: "Your trips", exact: true })).toBeVisible();
     await page.goto("/account"); await page.reload(); await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Alice");
     await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toHaveCount(0);
+    for (const [unsafe, message] of [[oldPassword, "Choose a new password different from your current password."], [email.toUpperCase(), "Choose a password different from your email."]]) {
+      await page.getByLabel("Current password", { exact: true }).fill(oldPassword);
+      await page.getByLabel("New password", { exact: true }).fill(unsafe);
+      await page.getByLabel("Confirm new password").fill(unsafe);
+      await page.getByRole("button", { name: "Change password", exact: true }).click();
+      await expect(page.locator("#password-error")).toHaveText(message);
+      expect((await page.request.get("/api/v1/auth/me")).status()).toBe(200);
+      expect((await second.request.get("/api/v1/auth/me")).status()).toBe(200);
+    }
     await page.getByLabel("Current password", { exact: true }).fill(oldPassword); await page.getByLabel("New password", { exact: true }).fill(newPassword);
     await page.getByLabel("Confirm new password").fill(newPassword); await page.getByRole("button", { name: "Change password", exact: true }).click();
     await expect(page.getByRole("status")).toContainText("Password changed.");

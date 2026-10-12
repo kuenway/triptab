@@ -30,7 +30,11 @@ const nextConfig: NextConfig = {
       { key: "CDN-Cache-Control", value: "no-store" },
       { key: "Vercel-CDN-Cache-Control", value: "no-store" },
       { key: "x-vercel-enable-rewrite-caching", value: "0" },
-    ] }];
+    ] }, ...["/forgot-password", "/reset-password"].map(source => ({ source, headers: [
+      { key: "Cache-Control", value: "no-store" },
+      { key: "CDN-Cache-Control", value: "no-store" },
+      { key: "Vercel-CDN-Cache-Control", value: "no-store" },
+    ] }))];
   },
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${backendOrigin}/api/:path*` }];

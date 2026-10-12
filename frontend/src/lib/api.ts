@@ -117,7 +117,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, body?: object, method = body ? "POST" : "GET"): Promise<T> {
-  const publicRequest = path === "/auth/login" || path === "/auth/register" || path === "/invitations/preview";
+  const publicRequest = path === "/auth/login" || path === "/auth/register" || path === "/auth/forgot-password" || path === "/auth/reset-password" || path === "/invitations/preview";
   if (method !== "GET" && !publicRequest && !csrfToken) await api.getMe();
   let response: Response;
   try {
@@ -157,6 +157,12 @@ async function authRequest(path: string, input?: object, method?: string): Promi
 }
 
 export const api = {
+  forgotPassword: (email: string) => request<{ message: string }>("/auth/forgot-password", { email }),
+  resetPassword: async (token: string, newPassword: string) => {
+    await request<void>("/auth/reset-password", { token, new_password: newPassword });
+    csrfToken = null;
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  },
   getMe: () => authRequest("/auth/me"),
   updateProfile: (display_name: string | null) => authRequest("/auth/me", { display_name }, "PATCH"),
   changePassword: (current_password: string, new_password: string) => request<void>("/auth/change-password", { current_password, new_password }),

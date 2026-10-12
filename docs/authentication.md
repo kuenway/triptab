@@ -21,8 +21,8 @@ and library verification. Login rehashes when the library's parameters change.
 Missing accounts and historical users without credentials verify a dummy hash
 and receive the same 401 `invalid email or password` response as a wrong password.
 See the [Argon2 library API](https://argon2-cffi.readthedocs.io/en/stable/api.html).
-There is no email verification, reset, OAuth, user directory, or disabled-account
-management in M9.
+M9 did not include email verification, recovery, OAuth, a user directory, or
+disabled-account management. M19B adds the focused recovery flow below.
 
 M10 centralizes configuration and adds bounded authentication rate limits, safe
 request diagnostics and production safeguards without changing these semantics.
@@ -240,9 +240,132 @@ account recheck instead of automatically repeating the mutation.
 Downgrade is limited to disposable/reviewed databases and deliberately refuses
 when null account names exist; it neither invents names nor discards accounts.
 
-### Deferred M19B
+## Password recovery (M19B)
 
-Password recovery remains unimplemented: Forgot password, reset tokens, finite
-expiry/single use, email provider integration, account-enumeration protection,
-reset-specific rate limiting and revoke-all-sessions after reset. M19A also
-excludes email changes, account deletion, photos and global Tripmate renaming.
+`POST /api/v1/auth/forgot-password` accepts a normalized email and always returns
+202 with the same generic message for known, unknown, null-name and
+non-login historical accounts, including when delivery fails. It returns no token,
+identity or delivery status. Only credentialed accounts can recover. Public auth
+POSTs require the exact allowed Origin but no existing session or session-CSRF
+header. `POST /api/v1/auth/reset-password` accepts only `token` and `new_password`;
+it reuses registration's SecretStr 12–128 character policy and the existing
+Argon2id hasher/two-operation semaphore. No password trimming or weaker hashing.
+
+Reset tokens use `secrets.token_urlsafe(32)` (256 bits, 43 URL-safe characters).
+Only the existing SHA-256 digest utility's output is stored, with UUID, User FK,
+UTC creation/expiry, used_at and revoked_at. Lifetime is 30 minutes, checked by
+the server without extension. Revoked_at distinguishes replacement/delivery
+failure from actual use. Requesting another link revokes prior unused tokens;
+successful reset consumes its token and revokes every remaining unused token.
+Token hashes are unique/indexed; a database trigger protects token ID, ownership
+and digest from reassignment. There is no cleanup job or token recovery endpoint.
+
+All account mutations serialize on **User first**. Reset discovers user_id from
+its digest without taking a token lock, locks the User, then locks/reloads the
+reset-token row and revalidates expiry/use/revocation. Password update, token
+consumption/invalidation and **all** session revocations commit together. Concurrent
+use of the same token yields one 204 and one neutral 400. Invalid, expired,
+replaced or consumed tokens share `This reset link is invalid or has expired.`
+No token IDs or account data appear in errors. Transaction failure changes none
+of those states. Recovery never creates a session and clears the requesting
+browser's session cookie; the user must explicitly Sign in afterward.
+
+Login and M19A Change password keep their existing User lock. An old-password
+login that commits before reset has its session revoked by reset; one arriving
+second verifies against the new hash and fails. If recovery commits first,
+Change password's current-session revalidation rejects its revoked session. If
+Change password commits first, an otherwise valid recovery token can still reset
+that account and revoke all sessions. This intentional distinction preserves
+email recovery authority; merely opening an old email changes nothing, and a
+superseded/consumed link can never undo a newer reset. Authenticated Change
+password continues preserving its current session and revoking the others.
+
+Forgot/Reset reuse the shared IP/global process-local auth limiter. Forgot also
+limits each SHA-256-normalized-email target to three requests per shared window,
+including unknown targets and across callers; the global limit bounds this map.
+429 and Retry-After do not reveal account existence. One worker/instance remains
+the operating assumption; no Redis, queue or worker is introduced.
+
+### Delivery and browser boundary
+
+Token creation/replacement commits before FastAPI's built-in post-response email
+task. Provider I/O therefore does not delay the generic response or hold a User
+lock. This is an in-process, non-durable task, not exactly-once email delivery:
+process interruption can lose delivery, and the user may request a new link.
+Provider failure logs only request ID/category and revokes that specific unused
+token under User-first ordering. A late failure cannot revoke a newer link or
+invalidate a consumed token. If invalidation itself fails, a second safe event is
+logged; the bearer remains undisclosed and still expires normally.
+
+The focused sender Protocol has a Resend adapter using Python's standard HTTPS
+client, a fixed `api.resend.com` host, verified system trust, a 10-second timeout,
+no redirects and no automatic retry. Minimal plain-text email includes only the
+reset link, expiry and ignore-if-unrequested guidance. Provider replies, email
+bodies, recipients, tokens, hashes and passwords are never logged. The adapter
+follows [Resend's send-email API](https://resend.com/docs/api-reference/emails/send-email).
+Production setup is a separate release task; see deployment/operations docs.
+
+`/forgot-password` is public and uses the existing auth shell with identical
+confirmation for known/unknown emails. `/reset-password#token=...` captures the
+fragment into component memory, then removes it from the address bar. It never
+uses query parameters, cookies, localStorage or sessionStorage. Reloading after
+capture loses the token; reopen the email link or request another. Missing or
+unavailable links show one neutral recovery state. New/confirm password fields
+support password managers and paste. Confirmed success clears secrets and offers
+Sign in, never automatic authentication. Unknown network/5xx outcomes clear
+secrets and require checking Sign in before requesting another link, without
+automatic retry. Recovery pages are dynamically served no-store with the existing
+no-referrer/CSP headers and no analytics. Opening them does not mutate sessions;
+successful recovery revokes every session of the recovered User, including their
+current one. Other Users' sessions remain valid. Existing invite fragment
+continuation remains unchanged; after a separate email recovery, reopen the
+original invitation to continue claiming its existing Guest identity.
+
+Local/unit/integration tests inject fake senders; no real email is sent. The
+browser harness is under backend/tests, absent from the packaged app, and refuses
+anything except TRIPTAB_ENV=test with a local *_e2e_test database. Its in-memory
+mailbox/controlled-expiry routes exist only in that test app, never app.main.
+
+Email changes/verification, account deletion, administrator resets, support
+password overrides, magic links, OAuth, MFA, photos, and general notifications
+remain deferred. No production provider account, key, DNS or environment is
+configured by this implementation.
+
+
+### Shared new-password policy (M19B final review)
+
+Registration, Change password and recovery all call validate_password_policy.
+Its structural policy is 12–128 characters; the API uses the same constants.
+Account-context checks reject email-equivalent passwords using the established
+strip().lower() email semantics (comparison only), and new passwords verified
+against the current Argon2id hash. Password bytes are never trimmed/lowercased
+for hashing or login. Unicode, spaces and passphrases are allowed; uppercase,
+numbers and symbols are not required. No history or rotation policy exists:
+A -> B -> A is allowed, while B -> B is rejected.
+
+Change verifies the supplied current password first, then validates the new one
+under the User lock. Recovery resolves/revalidates its token and User first, then
+validates against the current hash under that same lock. Argon2 verification and
+hashing reuse the bounded semaphore without nested acquisition. Policy rejection
+returns safe 422 feedback, changes no password/session state and does not consume
+or revoke the reset token. The user can correct the form with that same token
+until ordinary expiry/replacement/use makes it unavailable.
+
+Tool review: the installed Pydantic and argon2-cffi primitives cover this policy.
+[zxcvbn-python](https://pypi.org/project/zxcvbn/) 4.5.0 (Feb 2025, MIT, approximately
+409 kB wheel, no declared dependencies) reports testing on Python 3.8–3.13; it is
+useful for advisory estimates but defaults to 72 characters and warns about
+longer input processing. Mandatory scoring would exceed this product decision.
+[Django CommonPasswordValidator](https://docs.djangoproject.com/en/5.2/topics/auth/passwords/#django.contrib.auth.password_validation.CommonPasswordValidator)
+provides a maintained local 20,000-password list. Its BSD-3-Clause 5.2.15 package
+supports Python >=3.10 but brings an approximately 8.3 MB framework plus
+asgiref/sqlparse. Copying a list instead needs deliberate data/license/update
+ownership; no blocklist is adopted for this narrow policy.
+[password-validator](https://pypi.org/project/password-validator/) is small
+(approximately 5.7 kB, MIT, Python 3 wheel, no declared dependencies) but its last
+release is May 2020 and advertised Python classifier stops at 3.7. It adds no
+needed value over the existing length checks and does not solve account-context
+Argon2 comparison. [Pwned Passwords](https://haveibeenpwned.com/API/v3#PwnedPasswords)
+is a possible future breached-password check via hash-prefix range lookup or
+local downloaded data; no external password service/data is used here. No new
+dependency is added and no general strength claim is made by these minimal rules.

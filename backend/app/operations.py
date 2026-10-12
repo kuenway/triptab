@@ -14,9 +14,11 @@ from fastapi import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.application.auth import token_hash
 from app.config import Settings, get_settings
 
 logger = logging.getLogger("triptab")
+PASSWORD_RESET_TARGET_LIMIT = 3
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
@@ -44,29 +46,40 @@ def configure_logging(settings: Settings) -> None:
 
 
 class AuthRateLimiter:
-    """One shared fixed window for login, register and password change, per process."""
+    """Shared authentication fixed window, including recovery, per process."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
         self.started = time.monotonic()
         self.total = 0
         self.clients: dict[str, int] = {}
+        self.targets: dict[str, int] = {}
 
-    def check(self, client: str, settings: Settings) -> int:
+    def check(
+        self, client: str, settings: Settings, *, target: str | None = None
+    ) -> int:
         with self.lock:
             now = time.monotonic()
             if now - self.started >= settings.auth_rate_window:
-                self.started, self.total, self.clients = now, 0, {}
+                self.started, self.total, self.clients, self.targets = now, 0, {}, {}
             count = self.clients.get(client, 0)
+            target_key = token_hash(target) if target is not None else None
+            target_count = self.targets.get(target_key, 0)
             if (
                 count >= settings.auth_rate_limit
                 or self.total >= settings.auth_global_limit
+                or (
+                    target_key is not None
+                    and target_count >= PASSWORD_RESET_TARGET_LIMIT
+                )
             ):
                 return max(
                     1, math.ceil(settings.auth_rate_window - (now - self.started))
                 )
             self.total += 1
             self.clients[client] = count + 1
+            if target_key is not None:
+                self.targets[target_key] = target_count + 1
             # ponytail: process-local; one worker until a shared limiter is warranted.
             # The global limit also bounds the client map within each window.
             return 0

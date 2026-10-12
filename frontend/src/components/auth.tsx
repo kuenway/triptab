@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }}>{children}</AuthContext.Provider>;
 }
 
-function AuthShell({ children }: { children: ReactNode }) {
+export function AuthShell({ children }: { children: ReactNode }) {
   return <main className="shell auth-shell">
     <header className="auth-brand"><Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link><p className="muted">Split expenses with friends.</p></header>
     {children}
@@ -154,11 +154,12 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           {registering ? <><label htmlFor="auth-name">Display name</label><input id="auth-name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} required /></> : null}
           <label htmlFor="auth-email">Email</label><input id="auth-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} required />
           <label htmlFor="auth-password">Password</label><input id="auth-password" type="password" autoComplete={registering ? "new-password" : "current-password"} minLength={registering ? 12 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} required />
-          {registering ? <p className="muted">Use at least 12 characters.</p> : null}
+          {registering ? <p className="muted">Use at least 12 characters. Passphrases are welcome. No special symbols are required.</p> : null}
         </fieldset>
         {error ? <p role="alert" className="alert">{error}</p> : null}
         <button disabled={saving || auth.loading} type="submit">{saving ? "Please wait…" : registering ? "Register" : "Sign in"}</button>
       </form>
+      {!registering ? <p><Link href="/forgot-password">Forgot password?</Link></p> : null}
       <p>{registering ? "Already have an account? " : "New to TripTab? "}<Link replace={Boolean(inviteToken)} href={`${registering ? "/login" : "/register"}${inviteToken ? `#token=${encodeURIComponent(inviteToken)}` : ""}`}>{registering ? "Sign in" : "Create an account"}</Link></p>
       {inviteToken ? <p><Link replace href="/invite">Cancel invitation</Link></p> : null}
     </section>

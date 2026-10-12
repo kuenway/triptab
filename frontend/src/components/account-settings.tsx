@@ -95,7 +95,7 @@ function PasswordForm() {
         <input id={`password-${field.id}`} type="password" autoComplete={field.complete} minLength={field.min} maxLength={128} required value={field.value} onChange={event => field.change(event.target.value)} aria-invalid={Boolean(error && !uncertain && errorField === field.id)} aria-describedby={error && errorField === field.id ? "password-error" : undefined} />
       </div>)}
     </fieldset>
-    <p className="muted">Use 12–128 characters. Other signed-in sessions will be signed out.</p>
+    <p className="muted">Use at least 12 characters. Passphrases are welcome. Other signed-in sessions will be signed out.</p>
     {error ? <p id="password-error" role="alert" className="alert">{error}</p> : null}
     {saved ? <p role="status" className="success">Password changed. Other sessions have been signed out.</p> : null}
     {uncertain ? <button type="button" onClick={() => { clear(); setUncertain(false); setError(""); }}>Clear password fields</button> : <button disabled={saving} type="submit">{saving ? "Changing…" : "Change password"}</button>}
