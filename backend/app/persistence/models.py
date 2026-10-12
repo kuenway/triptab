@@ -48,7 +48,7 @@ class UserRow(Base):
     email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     # NULL keeps historical users valid without making them login accounts.
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
-    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.current_timestamp()
     )

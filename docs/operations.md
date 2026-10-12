@@ -159,9 +159,9 @@ compatibility. The existing timeout/uncertain-write guidance still applies.
 
 ## Authentication limits and retention
 
-Login and registration share a locked, process-local fixed-window counter, per IP
-and globally. Rejections return 429 and `Retry-After` before password work. The
-global cap bounds tracked IP memory. Window boundaries allow a double burst;
+Login, registration and password change share a locked, process-local fixed-window
+counter, per IP and globally. Rejections return 429 and `Retry-After` before
+password work. The global cap bounds tracked IP memory. Window boundaries allow a double burst;
 restarts reset counts. This supports the initial **one-worker, single-instance**
 deployment, not horizontal scaling. Shared limiting belongs to later scaling;
 no Redis or account lockouts are added. Ordinary financial APIs are unaffected.

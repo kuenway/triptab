@@ -32,6 +32,10 @@ class AccountConflict(Exception):
     """The normalized account email is already registered."""
 
 
+class IncorrectPassword(Exception):
+    """Authenticated password confirmation failed without ending the session."""
+
+
 class PermissionDenied(Exception):
     """An authenticated group member lacks permission for this operation."""
 
@@ -129,7 +133,9 @@ class AuthService:
     ) -> tuple[AuthContext, str]:
         with self.session.begin():
             user = self.session.scalar(
-                select(UserRow).where(UserRow.email == email.strip().lower())
+                select(UserRow)
+                .where(UserRow.email == email.strip().lower())
+                .with_for_update()
             )
             hashed = (
                 user.password_hash
@@ -153,6 +159,59 @@ class AuthService:
                 update(AuthSessionRow)
                 .where(
                     AuthSessionRow.id == session_id, AuthSessionRow.revoked_at.is_(None)
+                )
+                .values(revoked_at=datetime.now(UTC))
+            )
+
+    def _account_for_update(self, context: AuthContext) -> UserRow:
+        # Login uses this same row lock: an old-password login cannot create a
+        # session after the password change has revoked other sessions.
+        user = self.session.scalar(
+            select(UserRow).where(UserRow.id == context.user.id).with_for_update()
+        )
+        current = self.session.get(AuthSessionRow, context.session_id)
+        if (
+            user is None
+            or user.password_hash is None
+            or current is None
+            or current.user_id != context.user.id
+            or current.revoked_at is not None
+            or current.expires_at <= datetime.now(UTC)
+        ):
+            raise AuthenticationRequired("sign in required")
+        return user
+
+    def update_profile(
+        self, context: AuthContext, display_name: str | None
+    ) -> AuthContext:
+        with self.session.begin():
+            user = self._account_for_update(context)
+            user.display_name = display_name
+            self.session.flush()
+            return AuthContext(
+                user_from_row(user),
+                user.created_at,
+                context.session_id,
+                context.csrf_token,
+            )
+
+    def change_password(
+        self, context: AuthContext, current_password: str, new_password: str
+    ) -> None:
+        with self.session.begin():
+            user = self._account_for_update(context)
+            with PASSWORD_WORK:
+                try:
+                    PASSWORD_HASHER.verify(user.password_hash, current_password)
+                except (VerificationError, InvalidHashError):
+                    raise IncorrectPassword("Current password is incorrect.") from None
+                user.password_hash = PASSWORD_HASHER.hash(new_password)
+            self.session.execute(
+                update(AuthSessionRow)
+                .where(
+                    AuthSessionRow.user_id == user.id,
+                    AuthSessionRow.id != context.session_id,
+                    AuthSessionRow.revoked_at.is_(None),
                 )
                 .values(revoked_at=datetime.now(UTC))
             )

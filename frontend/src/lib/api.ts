@@ -1,4 +1,4 @@
-export type CurrentUser = { id: string; email: string; display_name: string; created_at: string };
+export type CurrentUser = { id: string; email: string; display_name: string | null; created_at: string };
 export type AuthState = { user: CurrentUser; csrf_token: string };
 export const AUTH_EXPIRED_EVENT = "triptab:auth-expired";
 let csrfToken: string | null = null; // CSRF only; the session token stays in its HttpOnly cookie.
@@ -150,14 +150,16 @@ async function request<T>(path: string, body?: object, method = body ? "POST" : 
   return response.json() as Promise<T>;
 }
 
-async function authRequest(path: string, input?: object): Promise<AuthState> {
-  const state = await request<AuthState>(path, input);
+async function authRequest(path: string, input?: object, method?: string): Promise<AuthState> {
+  const state = await request<AuthState>(path, input, method);
   csrfToken = state.csrf_token;
   return state;
 }
 
 export const api = {
   getMe: () => authRequest("/auth/me"),
+  updateProfile: (display_name: string | null) => authRequest("/auth/me", { display_name }, "PATCH"),
+  changePassword: (current_password: string, new_password: string) => request<void>("/auth/change-password", { current_password, new_password }),
   register: (email: string, password: string, display_name: string) => authRequest("/auth/register", { email, password, display_name }),
   login: (email: string, password: string) => authRequest("/auth/login", { email, password }),
   logout: async () => { await request<void>("/auth/logout", {}); csrfToken = null; },

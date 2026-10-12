@@ -119,7 +119,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await expect(bob).toHaveURL(/\/login#token=/);
     await bob.getByRole("link", { name: "Create an account", exact: true }).click();
     await expect(bob).toHaveURL(/\/register#token=/);
-    await bob.getByLabel("Display name").fill("Robert");
+    await bob.getByLabel("Display name").fill("Robert Chen");
     await bob.getByLabel("Email", { exact: true }).fill(`bob-collaboration-${suffix}@example.com`);
     await bob.getByLabel("Password", { exact: true }).fill(password);
     await bob.getByRole("button", { name: "Register", exact: true }).click();
@@ -129,6 +129,7 @@ test("Bob claims his existing guest identity and Alice sees their shared ledger"
     await bob.getByRole("button", { name: "Join as Bob" }).click();
     await expect(bob).toHaveURL(tripUrl);
     expect(new URL(bob.url()).hash).toBe("");
+    expect((await (await bob.request.get("/api/v1/auth/me")).json()).user.display_name).toBe("Robert Chen");
     await openSection(bob, "Tripmates");
     await expect(bob.getByRole("region", { name: "Tripmates", exact: true }).getByRole("group", { name: "Tripmate Bob", exact: true })).toContainText("Member");
     const members = await (await bob.request.get(`/api/v1/groups/${tripId}/members`)).json();

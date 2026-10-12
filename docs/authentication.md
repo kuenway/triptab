@@ -190,3 +190,59 @@ this milestone. Owner overrides do not permit deleting financial identities.
 Frontend Expense defaults use the authenticated User's linked GroupMember as
 payer, with explicit editing allowed; a missing association never falls back to
 an arbitrary traveler. Recording actor still comes exclusively from the session.
+
+## M19A account settings
+
+`User.display_name` already represents account identity; M19A reuses it rather
+than adding another profile field. Revision `20261012_0006` makes it nullable
+without changing existing values or backfilling email-derived names. A null name
+is valid. Non-null names are trimmed, Unicode-friendly, case-preserving and
+1–100 characters; account names have no uniqueness requirement. Registration
+still requires a name. `GroupMember.display_name` remains a separate, non-null,
+Trip-specific financial label. User identity is not GroupMember identity.
+
+`GET /api/v1/auth/me` retains `{user, csrf_token}` and allows a null account name.
+`PATCH /api/v1/auth/me` accepts only `display_name` (null clears it), requires
+authentication, Origin and session CSRF, and returns the same representation.
+Unknown fields, including email, user IDs and password fields, are rejected.
+Email is read-only and remains the sign-in identifier. Responses stay `no-store`.
+
+Account names default the Owner GroupMember name only when creating a **new**
+Trip. A null account name uses the existing email-based presentation as a
+creation fallback (email local part); it is not persisted back to the account.
+Changing an account name never renames existing Tripmates or financial history.
+Accepting an invitation links the existing Guest UUID without changing its name:
+an account called Robert Chen still claims the Tripmate Bob as Bob. No name
+matching, bulk synchronization or financial identity migration occurs.
+
+`POST /api/v1/auth/change-password` accepts `current_password` and `new_password`.
+The authenticated session requires Origin and CSRF. It reuses registration’s
+12–128 character password policy, Argon2id defaults, bounded password work, and
+the existing shared process-local auth limiter (no new distributed service).
+Incorrect current password returns 422 with a safe field message, not logout/401.
+Password change locks the User, revalidates the current Session UUID, verifies
+the old password, hashes the new password, and revokes every other unrevoked
+session in one transaction. The current cookie, session and CSRF token remain
+valid; other Users’ sessions are unaffected. Login takes the same User lock so
+a concurrent old-password login cannot bypass revocation. No password, hash or
+session secret is returned or logged. Success returns 204.
+
+The protected `/account` page is reachable through the Home account menu and
+returns to All trips; it has no Trip navigation. Saving a name updates the
+existing auth state without reloading the session. The menu uses the name initial
+or its existing email fallback. Native password fields support password managers
+and paste; passwords live only in transient form state, never browser storage
+or URLs. Confirmed success clears them. An uncertain network/5xx result blocks
+resubmission and explains that the password may already have changed; verify
+with a separate sign-in before retrying. Profile uncertainty offers a read-only
+account recheck instead of automatically repeating the mutation.
+
+Downgrade is limited to disposable/reviewed databases and deliberately refuses
+when null account names exist; it neither invents names nor discards accounts.
+
+### Deferred M19B
+
+Password recovery remains unimplemented: Forgot password, reset tokens, finite
+expiry/single use, email provider integration, account-enumeration protection,
+reset-specific rate limiting and revoke-all-sessions after reset. M19A also
+excludes email changes, account deletion, photos and global Tripmate renaming.

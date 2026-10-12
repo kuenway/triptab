@@ -41,12 +41,13 @@ class SplitStrategy(StrEnum):
 class User:
     id: UUID
     email: str
-    display_name: str
+    display_name: str | None
 
     def __post_init__(self) -> None:
         _require_uuid("id", self.id)
         _require_nonblank("email", self.email)
-        _require_nonblank("display_name", self.display_name)
+        if self.display_name is not None:
+            _require_nonblank("display_name", self.display_name)
 
 
 @dataclass(frozen=True, slots=True)

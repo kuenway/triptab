@@ -99,7 +99,10 @@ class TripTabService:
                 GroupMember(
                     id=uuid4(),
                     group_id=group.id,
-                    display_name=self.current_user.display_name,
+                    display_name=(
+                        self.current_user.display_name
+                        or self.current_user.email.split("@", 1)[0]
+                    ),
                     user_id=self.current_user.id,
                     role="owner",
                 )

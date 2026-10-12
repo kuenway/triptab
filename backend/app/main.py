@@ -16,6 +16,7 @@ from app.api.routes import router
 from app.application.auth import (
     AccountConflict,
     AuthenticationRequired,
+    IncorrectPassword,
     PermissionDenied,
 )
 from app.application.invitations import InvitationConflict
@@ -38,6 +39,7 @@ CLIENT_ERRORS = {
     AuthenticationRequired: (401, "authentication"),
     PermissionDenied: (403, "permission"),
     AccountConflict: (409, "account_conflict"),
+    IncorrectPassword: (422, "current_password"),
     ResourceNotFound: (404, "resource_not_found"),
     FinancialConflict: (409, "financial_conflict"),
     MemberRemovalConflict: (409, "member_conflict"),

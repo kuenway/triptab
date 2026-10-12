@@ -4,7 +4,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import AwareDatetime, EmailStr, Field, SecretStr, field_validator
+from pydantic import (
+    AwareDatetime,
+    EmailStr,
+    Field,
+    SecretStr,
+    StringConstraints,
+    field_validator,
+)
 
 from app.api.dependencies import (
     CurrentUserDependency,
@@ -15,6 +22,11 @@ from app.api.schemas import RequestModel
 from app.application.auth import AuthContext, AuthService
 from app.config import get_settings
 from app.operations import require_auth_rate_limit
+
+Password = Annotated[SecretStr, Field(min_length=12, max_length=128)]
+DisplayName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+]
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -30,14 +42,23 @@ class LoginRequest(RequestModel):
 
 
 class RegisterRequest(LoginRequest):
-    password: Annotated[SecretStr, Field(min_length=12, max_length=128)]
-    display_name: Annotated[str, Field(min_length=1, max_length=100)]
+    password: Password
+    display_name: DisplayName
+
+
+class ProfileUpdate(RequestModel):
+    display_name: DisplayName | None
+
+
+class PasswordChange(RequestModel):
+    current_password: Annotated[SecretStr, Field(min_length=1, max_length=128)]
+    new_password: Password
 
 
 class UserResponse(RequestModel):
     id: UUID
     email: str
-    display_name: str
+    display_name: str | None
     created_at: AwareDatetime
 
 
@@ -133,3 +154,27 @@ def logout(
         samesite="lax",
     )
     response.headers["Cache-Control"] = "no-store"
+
+
+@router.patch("/me", response_model=AuthResponse)
+def update_profile(
+    payload: ProfileUpdate, context: CurrentUserDependency, session: SessionDependency
+) -> AuthResponse:
+    updated = AuthService(session).update_profile(context, payload.display_name)
+    return AuthResponse.from_context(updated)
+
+
+@router.post("/change-password", status_code=204)
+def change_password(
+    payload: PasswordChange,
+    context: CurrentUserDependency,
+    request: Request,
+    session: SessionDependency,
+) -> None:
+    # Run after authentication/CSRF so anonymous traffic cannot consume this path.
+    require_auth_rate_limit(request)
+    AuthService(session).change_password(
+        context,
+        payload.current_password.get_secret_value(),
+        payload.new_password.get_secret_value(),
+    )

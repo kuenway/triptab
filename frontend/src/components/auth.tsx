@@ -100,7 +100,8 @@ export function AccountMenu() {
       {initial ? <span aria-hidden="true">{initial}</span> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21v-2a8 8 0 0 1 16 0v2" /></svg>}
     </button>
     {open ? <div id={id} className="account-popover" role="group" aria-label="Your account">
-      <p className="muted">Signed in as</p><p className="account-identity">{user?.email}</p>
+      <p className="muted">Signed in as</p>{user?.display_name ? <p className="account-name">{user.display_name}</p> : null}<p className="account-identity">{user?.email}</p>
+      <Link className="account-link" href="/account" onClick={() => setOpen(false)}>Account</Link>
       <button ref={action} disabled={saving} onClick={async () => { setSaving(true); setError(""); try { await logout(); } catch (cause) { setError((cause as Error).message); } finally { setSaving(false); } }}>Sign out</button>
       {error ? <p role="alert" className="alert">{error}</p> : null}
     </div> : null}

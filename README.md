@@ -61,6 +61,11 @@ history blocks removal, including voided records and zero allocations. Invitatio
 audit remains stored; linked Member removal is deferred. See [invitation and
 removal contracts](docs/invitations.md).
 
+Account settings are available from the Home account menu. Account Name defaults
+your name in new Trips only; existing Tripmate names remain unchanged. Password
+changes preserve the current session and sign out other sessions. Email changes
+and password recovery remain deferred. See [authentication](docs/authentication.md#m19a-account-settings).
+
 Local development uses PostgreSQL 18 with database/user `triptab` and active volume
 `triptab_postgres18_data`. Previous data stays in the preserved
 `triptab_postgres_data` and `splitwise_postgres_data` volumes; neither is mounted

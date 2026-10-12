@@ -44,7 +44,7 @@ def configure_logging(settings: Settings) -> None:
 
 
 class AuthRateLimiter:
-    """One shared fixed window for both authentication POSTs, per process."""
+    """One shared fixed window for login, register and password change, per process."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()

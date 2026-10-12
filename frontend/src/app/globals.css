@@ -315,3 +315,16 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 @media (max-width: 800px) {
   .new-trip-dialog { width: 100%; }
 }
+
+/* Account settings stay app-level, using the existing form and surface styles. */
+.account-shell { max-width: 704px; }
+.account-workspace { display: grid; gap: 20px; padding-top: 28px; }
+.account-workspace h1 { font-size: 2rem; margin: 0; }
+.account-form { margin-top: 20px; }
+.account-form > button { justify-self: start; }
+.account-form .muted { font-size: .875rem; margin: 0; }
+.account-email { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 20px; overflow-wrap: anywhere; }
+.account-email p { margin-bottom: 6px; }
+.account-link { display: flex; align-items: center; min-height: 44px; padding: 8px 12px; margin-bottom: 8px; border-bottom: 1px solid var(--line); font-weight: 600; }
+.account-name { font-weight: 700; overflow-wrap: anywhere; }
+.account-shell a:focus-visible, .account-shell button:focus-visible, .account-menu a:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }

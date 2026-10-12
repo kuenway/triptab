@@ -27,7 +27,8 @@ algorithm is not duplicated in SQL.
 
 PostgreSQL 18 is canonical for local development, integration/browser tests,
 disposable databases and CI. Compose and both CI services use `postgres:18-alpine`.
-The application migration head remains `20261011_0005`; no schema change is needed.
+The application migration head is `20261012_0006`; M19A makes the existing
+account display name nullable without changing stored names.
 
 The repository root `.env.example` contains development-only connection values.
 Copy it to `.env` if this is a new checkout, or add its `DATABASE_URL` and
@@ -241,6 +242,6 @@ uv run --env-file ../.env alembic current
 uv run --env-file ../.env alembic check
 ```
 
-Expected revision: `20261011_0005`. Recovery uses native logical dump/restore,
+Expected revision: `20261012_0006`. Recovery uses native logical dump/restore,
 not filesystem copying; see [operations](operations.md#backup-and-recovery).
 Both old and new known example passwords remain rejected in production configuration.
