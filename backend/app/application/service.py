@@ -510,7 +510,9 @@ class TripTabService:
             raise FinancialConflict("expense already voided or corrected")
         return record
 
-    def void_expense(self, group_id: UUID, target_id: UUID, reason: str) -> ExpenseVoid:
+    def void_expense(
+        self, group_id: UUID, target_id: UUID, reason: str | None = None
+    ) -> ExpenseVoid:
         with self._financial_transaction(group_id):
             self._active_expense(group_id, target_id)
             void = ExpenseVoid(
@@ -547,7 +549,7 @@ class TripTabService:
         return record
 
     def void_settlement(
-        self, group_id: UUID, target_id: UUID, reason: str
+        self, group_id: UUID, target_id: UUID, reason: str | None = None
     ) -> SettlementVoid:
         with self._financial_transaction(group_id):
             self._active_settlement(group_id, target_id)

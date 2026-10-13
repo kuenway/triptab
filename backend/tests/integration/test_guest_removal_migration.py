@@ -148,7 +148,7 @@ def test_populated_invitation_audit_upgrade_and_safe_downgrade(pg_engine):
         with target.connect() as c:
             assert (
                 c.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20261012_0007"
+                == "20261014_0008"
             )
             assert (
                 c.scalar(
@@ -218,7 +218,7 @@ def test_populated_invitation_audit_upgrade_and_safe_downgrade(pg_engine):
         with target.connect() as c:
             assert (
                 c.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20261012_0007"
+                == "20261014_0008"
             )
             audit = c.execute(
                 text(

@@ -57,7 +57,7 @@ def test_populated_password_recovery_migration(pg_engine):
         with target.connect() as c:
             assert (
                 c.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20261012_0007"
+                == "20261014_0008"
             )
             assert int(c.scalar(text("SHOW server_version_num"))) // 10000 == 18
             assert c.scalar(text("SELECT count(*) FROM password_reset_tokens")) == 0

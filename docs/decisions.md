@@ -53,3 +53,13 @@ lists show active records; native collapsed history sections retain voided recor
 and replacement chains. Edit and the confirmed trash action reuse the existing
 correction/void APIs, authorization and immutable accounting model. No API, schema,
 dependency or production changes are required.
+
+
+### M21A: optional financial deletion notes
+
+An explanation is optional for deletion, while the immutable void event remains
+mandatory. Keep the API field `reason` for compatibility and store omitted/null/
+blank deletion notes as NULL. Meaningful historical reasons remain unchanged.
+Corrections still require a nonblank reason, enforced in the request/domain and
+by nullable-column plus correction-specific database constraints. No accounting,
+authorization, session, recovery, animation or physical-deletion behavior changes.

@@ -27,7 +27,7 @@ algorithm is not duplicated in SQL.
 
 PostgreSQL 18 is canonical for local development, integration/browser tests,
 disposable databases and CI. Compose and both CI services use `postgres:18-alpine`.
-The application migration head is `20261012_0007`; M19A makes the existing
+The application migration head is `20261014_0008`; M19A makes the existing
 account display name nullable without changing stored names.
 
 The repository root `.env.example` contains development-only connection values.
@@ -122,7 +122,9 @@ NTD amount, and aware `occurred_at`. Partial edits and extra fields are rejected
 Authentication and group membership are required. Original recording authors and
 owners may void or correct; replacement payments must also satisfy payment
 recording permissions. Missing or cross-group targets return 404, an already-voided
-target returns 409, and invalid financial values or a blank reason return 422.
+target returns 409, and invalid financial values or a blank correction reason
+return 422.
+Deletion notes are optional; the existing request field remains `reason`.
 Referenced missing or cross-group travelers follow existing creation conventions (404). These additions
 retain existing response fields and ordering and add nullable audit metadata and
 an explicit active/voided status. No recursive records are embedded.
@@ -242,7 +244,7 @@ uv run --env-file ../.env alembic current
 uv run --env-file ../.env alembic check
 ```
 
-Expected revision: `20261012_0007`. Recovery uses native logical dump/restore,
+Expected revision: `20261014_0008`. Recovery uses native logical dump/restore,
 not filesystem copying; see [operations](operations.md#backup-and-recovery).
 Both old and new known example passwords remain rejected in production configuration.
 
@@ -263,3 +265,28 @@ and its identity-protection function; it does not reverse successful password or
 session changes. Use downgrade only on disposable/reviewed databases. Local tests
 verify populated 0006 -> 0007 preservation, fresh migration, check and re-upgrade
 on PostgreSQL 18. Production remains at 0006 until a separate approved release.
+
+## Optional deletion notes (M21A)
+
+Revision `20261014_0008` follows `20261012_0007` and makes only the two
+financial void `reason` columns nullable. Upgrade leaves every historical row
+and meaningful reason unchanged. Existing target/group/actor foreign keys,
+unique targets, application-owned immutable financial history and financial
+transaction locks remain.
+The existing nonblank checks reject empty persisted strings; added checks require
+a non-null reason when `replacement_id` identifies a correction.
+
+Expense/Settlement `/void` bodies accept `{}`, `{"reason": null}`, empty or
+whitespace-only strings, and meaningful strings. Domain validation normalizes
+absent/blank deletion notes to SQL NULL without inventing an explanation.
+Meaningful values are preserved verbatim, including historical surrounding spaces.
+No existing maximum note length was configured; this milestone does not invent one.
+Correction endpoints still require a nonblank string and a complete replacement.
+
+Downgrade to `20261012_0007` is safe only while every void reason is non-null.
+It checks both tables before schema changes and refuses otherwise; it never
+backfills or rewrites immutable financial audit events. Migration-before-deployment
+is compatible with the previous application until note-less voids are created.
+After that point pre-M21A code cannot read these events safely. Release requires
+explicit review, CI, migration and application deployment approval; M21A is local
+only. Frontend optional-note submission requires the M21A backend/schema.

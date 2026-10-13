@@ -240,13 +240,17 @@ class ExpenseVoidRow(Base):
             ondelete="RESTRICT",
         ),
         CheckConstraint("length(trim(reason)) > 0", name="reason_nonblank"),
+        CheckConstraint(
+            "replacement_id IS NULL OR reason IS NOT NULL",
+            name="correction_reason_required",
+        ),
         CheckConstraint("replacement_id <> expense_id", name="new_replacement"),
         Index("ix_expense_voids_group_id", "group_id"),
     )
 
     expense_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     group_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
-    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -278,13 +282,17 @@ class SettlementVoidRow(Base):
             ondelete="RESTRICT",
         ),
         CheckConstraint("length(trim(reason)) > 0", name="reason_nonblank"),
+        CheckConstraint(
+            "replacement_id IS NULL OR reason IS NOT NULL",
+            name="correction_reason_required",
+        ),
         CheckConstraint("replacement_id <> settlement_id", name="new_replacement"),
         Index("ix_settlement_voids_group_id", "group_id"),
     )
 
     settlement_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     group_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
-    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

@@ -73,3 +73,19 @@ it("keeps authorized active settlement controls secondary inside a keyboard-nati
   fireEvent.click(details.querySelector("summary")!);expect(within(details).getByRole("button", { name: "Edit" })).toBeTruthy();expect(within(details).getByRole("button", { name: "Delete payment" })).toBeTruthy();
   fireEvent.click(within(details).getByRole("button", { name: "Edit" }));expect(screen.getByRole("group", { name: "Edit payment" })).toBeTruthy();
 });
+
+
+it.each(["expense", "payment"] as const)("shows only meaningful optional notes on %s removal events", (kind) => {
+  const record = { ...(kind === "expense" ? expense : payment), status: "voided" as const, void_created_at: stamp(0, 14), void_created_by_user_id: "alice-user", void_reason: null };
+  const renderTimeline = (reason: string | null) => <FinancialTimeline expenses={kind === "expense" ? [{ ...record, void_reason: reason } as Expense] : []} payments={kind === "payment" ? [{ ...record, void_reason: reason } as Settlement] : []} travelers={travelers} tripId="trip" error="" onChanged={onChanged} />;
+  const view = render(renderTimeline(null));
+  const removed = screen.getByRole("heading", { name: kind === "expense" ? "Lunch removed" : "Settlement removed" }).closest("article")!;
+  fireEvent.click(within(removed).getByText("Details", { exact: false }));
+  expect(within(removed).queryByText(/Note:|Reason:/)).toBeNull();
+  expect(within(removed).getByText("Removed by You")).toBeTruthy();
+  view.rerender(renderTimeline("  "));
+  expect(within(removed).queryByText(/Note:|Reason:/)).toBeNull();
+  view.rerender(renderTimeline("Entered twice"));
+  expect(within(removed).getByText("Note: Entered twice")).toBeTruthy();
+  expect(within(removed).queryByText(/Reason:/)).toBeNull();
+});

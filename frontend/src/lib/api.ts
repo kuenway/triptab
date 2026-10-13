@@ -193,11 +193,11 @@ export const api = {
     request<Settlement>(`/groups/${id}/settlement-suggestions/confirm`, suggestion),
   recordSettlement: (id: string, payment: SettlementInput) =>
     request<Settlement>(`/groups/${id}/settlements`, payment),
-  voidExpense: (id: string, expenseId: string, reason: string) =>
+  voidExpense: (id: string, expenseId: string, reason?: string | null) =>
     request<Expense>(`/groups/${id}/expenses/${expenseId}/void`, { reason }),
   correctExpense: (id: string, expenseId: string, reason: string, replacement: ExpenseInput) =>
     request<Expense>(`/groups/${id}/expenses/${expenseId}/corrections`, { reason, replacement }),
-  voidSettlement: (id: string, settlementId: string, reason: string) =>
+  voidSettlement: (id: string, settlementId: string, reason?: string | null) =>
     request<Settlement>(`/groups/${id}/settlements/${settlementId}/void`, { reason }),
   correctSettlement: (id: string, settlementId: string, reason: string, replacement: SettlementInput) =>
     request<Settlement>(`/groups/${id}/settlements/${settlementId}/corrections`, { reason, replacement }),

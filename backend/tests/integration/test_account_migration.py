@@ -68,7 +68,7 @@ def test_populated_account_upgrade_downgrade_and_null_guard(pg_engine):
         with target.connect() as c:
             assert (
                 c.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20261012_0007"
+                == "20261014_0008"
             )
         command.downgrade(config, "20261011_0005")
         assert snapshot() == before
@@ -93,7 +93,7 @@ def test_populated_account_upgrade_downgrade_and_null_guard(pg_engine):
             )
             assert (
                 c.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20261012_0007"
+                == "20261014_0008"
             )
     finally:
         if target is not None:

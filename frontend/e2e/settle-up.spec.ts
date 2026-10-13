@@ -23,7 +23,7 @@ async function register(page: Page, name: string) {
   return email;
 }
 
-test("confirms Bob's external settlement and preserves correction history", async ({ page }) => {
+test("confirms Bob's external settlement and preserves correction history", async ({ page }, testInfo) => {
   const email = await register(page, "Alice");
   await page.getByRole("button", { name: "+ New trip", exact: true }).click();
   await page.getByLabel("Trip name").fill(`Settle-up smoke ${Date.now()}`);
@@ -106,12 +106,19 @@ test("confirms Bob's external settlement and preserves correction history", asyn
   await correctedPayment.locator("summary").click();
   await correctedPayment.getByRole("button", { name: "Delete payment" }).click();
   const deletePayment = correctedPayment.getByRole("form", { name: "Delete payment" });
-  await deletePayment.getByLabel("Reason").fill("Payment did not happen");
-  await deletePayment.getByRole("button", { name: "Confirm delete payment" }).click();
+  await expect(deletePayment.getByLabel("Note (optional)")).not.toHaveAttribute("required");
+  await deletePayment.getByLabel("Note (optional)").fill("Payment did not happen");
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await deletePayment.screenshot({ path: testInfo.outputPath(`delete-payment-${width}.png`) });
+  }
+  await deletePayment.getByRole("button", { name: "Confirm delete payment" }).focus();
+  await page.keyboard.press("Enter");
   const removedPayment = history.locator("article").filter({ has: page.getByRole("heading", { name: "Settlement removed", exact: true }) });
   await expect(removedPayment).toBeVisible();
   await removedPayment.locator("summary").click();
-  await expect(removedPayment).toContainText("Payment did not happen");
+  await expect(removedPayment).toContainText("Note: Payment did not happen");
   await expect(history.getByRole("button", { name: "Delete payment" })).toHaveCount(0);
   await openSection(page, "Balances");
   await expect(balances.locator(".balance-row").filter({ hasText: "Bob" })).toContainText("Owes NT$300");
@@ -188,7 +195,7 @@ test("edits and deletes an expense while keeping previous versions in history", 
   await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(current).toContainText("NT$990");
   await trash.click();
-  await confirmation.getByLabel("Reason").fill("Duplicate dinner entry");
+  await confirmation.getByLabel("Note (optional)").fill("Duplicate dinner entry");
   await confirmation.getByRole("button", { name: "Confirm delete expense" }).click();
   await expect(current.locator("article")).toHaveCount(0);
   await expect(current).toContainText("No current expenses");

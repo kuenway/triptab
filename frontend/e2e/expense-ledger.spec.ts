@@ -80,10 +80,21 @@ test("ledger-first entry, shared editing, history and responsive native dialog r
   await expect(page.locator("details.financial-history")).toContainText("NT$123,456");
   await current.getByRole("button", { name: "Delete expense", exact: true }).focus(); await page.keyboard.press("Enter");
   const confirmation = current.getByRole("form", { name: "Delete expense", exact: true });
-  await confirmation.getByLabel("Reason").fill("Duplicate entry"); await confirmation.getByRole("button", { name: "Confirm delete expense", exact: true }).focus(); await page.keyboard.press("Enter");
+  await expect(confirmation.getByLabel("Note (optional)")).not.toHaveAttribute("required");
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await confirmation.screenshot({ path: testInfo.outputPath(`delete-${width}.png`) });
+  }
+  await page.setViewportSize({ width: 375, height: 812 });
+  await confirmation.getByRole("button", { name: "Confirm delete expense", exact: true }).focus(); await page.keyboard.press("Enter");
   await expect(current.locator("article")).toHaveCount(0);
+  await openSection(page, "Balances");
+  await expect(page.getByRole("region", { name: "Balances", exact: true })).toContainText("Everyone is settled up.");
   await openSection(page, "History"); await page.getByRole("heading", { name: description + " removed" }).locator("..").locator("..").locator("summary").click();
-  await expect(page.getByRole("region", { name: "History", exact: true })).toContainText("Duplicate entry");
+  const removed = page.getByRole("heading", { name: description + " removed" }).locator("..").locator("..");
+  await expect(removed).not.toContainText("Note:");
+  await expect(removed).not.toContainText("Reason:");
   const historyView = page.getByRole("region", { name: "History", exact: true });
   await expect(historyView.getByRole("heading", { name: description + " added", exact: true })).toBeVisible();
   await expect(historyView.getByRole("heading", { name: description + " edited", exact: true })).toBeVisible();

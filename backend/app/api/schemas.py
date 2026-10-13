@@ -100,10 +100,11 @@ class FinancialAudit(BaseModel):
 
 
 class VoidRequest(RequestModel):
+    reason: str | None = None
+
+
+class ExpenseCorrection(RequestModel):
     reason: str
-
-
-class ExpenseCorrection(VoidRequest):
     replacement: ExpenseCreate
 
 
@@ -180,7 +181,8 @@ class SettlementCreate(RequestModel):
     occurred_at: AwareDatetime
 
 
-class SettlementCorrection(VoidRequest):
+class SettlementCorrection(RequestModel):
+    reason: str
     replacement: SettlementCreate
 
 

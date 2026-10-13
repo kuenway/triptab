@@ -175,8 +175,8 @@ remains pure and does not inspect login sessions or membership roles.
 
 Financial history is immutable after entry: **void is not delete**, and
 **correction is not update**. There are no financial PATCH or DELETE endpoints.
-A void inserts an `ExpenseVoid` or `SettlementVoid` with the original ID, reason,
-UTC recording time, and actor. The original financial fields and expense splits
+A void inserts an `ExpenseVoid` or `SettlementVoid` with the original ID,
+optional deletion note, UTC recording time, and actor. The original financial fields and expense splits
 remain stored. A correction saves a new complete Expense (Equal or Exact) or
 Settlement and its original's void record in one application-owned transaction.
 The new record has its own UUID and recording time. A failure rolls back the new
@@ -213,8 +213,8 @@ previous version. History is read-only; normal current records need no Active ba
 Active records offer **Edit** and an accessible trash-can **Delete expense/payment**
 action. Edit starts with the original values and saves through the existing
 correction endpoint: a complete replacement and the original's void are committed
-atomically. Delete asks for confirmation and a reason, then uses the existing void
-endpoint; it never deletes financial rows. Both explain that the previous record
+atomically. Delete asks for confirmation and an optional note, then uses the
+existing void endpoint; it never deletes financial rows. Both explain that the previous record
 stays in history. Every successful change refreshes expenses, payments, balances,
 and suggestions from the API. Retrieval still returns full audit history; only
 its presentation is separated. The frontend does no balance arithmetic.
@@ -229,3 +229,12 @@ expense, split, settlement, void/replacement reference or accounting input ident
 Balances and suggestions immediately before/after claiming are identical. The
 newly linked account uses normal Member permissions; its later records carry its
 User as recording actor independently of which traveler paid. See [invitations](invitations.md).
+
+M21A deletion notes are optional; audit history is required. `Note (optional)`
+accepts an empty field, while confirmation and destructive controls remain.
+Deleting an Expense reverses its active contribution; deleting a Settlement
+restores its pre-payment balance contribution. Neither operation deletes the
+original row, splits, actor or timestamp. History shows `Note: ...` only when a
+meaningful deletion note exists. Edit/correction history retains `Reason: ...`
+and still requires a nonblank reason. Unused Guest removal uses its existing
+confirmation with no reason field and is outside this change.

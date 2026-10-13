@@ -21,6 +21,18 @@ def _require_nonblank(name: str, value: object) -> None:
         raise DomainValidationError(f"{name} must be a nonblank string")
 
 
+def _void_reason(reason: str | None, correction: bool) -> str | None:
+    if correction:
+        _require_nonblank("reason", reason)
+    elif reason is not None:
+        if not isinstance(reason, str):
+            raise DomainValidationError("reason must be a string or null")
+        if not reason.strip():
+            return None
+    # Preserve meaningful historical values exactly, including surrounding spaces.
+    return reason
+
+
 def _require_amount(name: str, value: object, *, allow_zero: bool = False) -> None:
     if type(value) is not int or value < 0 or (value == 0 and not allow_zero):
         qualifier = "nonnegative" if allow_zero else "positive"
@@ -175,7 +187,7 @@ class Settlement:
 class ExpenseVoid:
     expense_id: UUID
     group_id: UUID
-    reason: str
+    reason: str | None
     created_at: datetime
     created_by_user_id: UUID
     replacement_id: UUID | None = None
@@ -183,7 +195,9 @@ class ExpenseVoid:
     def __post_init__(self) -> None:
         _require_uuid("expense_id", self.expense_id)
         _require_uuid("group_id", self.group_id)
-        _require_nonblank("reason", self.reason)
+        object.__setattr__(
+            self, "reason", _void_reason(self.reason, self.replacement_id is not None)
+        )
         _require_aware_datetime("created_at", self.created_at)
         _require_uuid("created_by_user_id", self.created_by_user_id)
         if self.replacement_id is not None:
@@ -196,7 +210,7 @@ class ExpenseVoid:
 class SettlementVoid:
     settlement_id: UUID
     group_id: UUID
-    reason: str
+    reason: str | None
     created_at: datetime
     created_by_user_id: UUID
     replacement_id: UUID | None = None
@@ -204,7 +218,9 @@ class SettlementVoid:
     def __post_init__(self) -> None:
         _require_uuid("settlement_id", self.settlement_id)
         _require_uuid("group_id", self.group_id)
-        _require_nonblank("reason", self.reason)
+        object.__setattr__(
+            self, "reason", _void_reason(self.reason, self.replacement_id is not None)
+        )
         _require_aware_datetime("created_at", self.created_at)
         _require_uuid("created_by_user_id", self.created_by_user_id)
         if self.replacement_id is not None:

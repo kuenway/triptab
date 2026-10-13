@@ -25,8 +25,8 @@ balances from valid, explicitly supplied history and includes every supplied gro
 member, even if their balance is zero. A later application layer must supply all
 relevant historical members and trusted records. Financial corrections use separate
 immutable `ExpenseVoid` and `SettlementVoid` values and replacement financial
-records. Void values check UUIDs, a nonblank reason, aware recording time, and a
-replacement ID different from the target. The application checks scoped existence
+records. Void values check UUIDs, an optional deletion note (nonblank reason for
+corrections), aware recording time, and a replacement ID different from the target. The application checks scoped existence
 and active status; database keys enforce at most one void per target and
 same-group replacement references. Original financial domain contracts are
 unchanged. Effective-record selection belongs to persistence/application, before

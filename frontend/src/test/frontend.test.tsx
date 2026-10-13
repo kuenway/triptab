@@ -404,7 +404,10 @@ it("prepopulates Exact allocations for correction", async () => {
   await waitFor(() => expect(api.correctExpense).toHaveBeenCalledWith(trip.id, expense.id, "Receipt allocations", expect.objectContaining({ split_strategy: "exact", splits: exact.splits })));
 });
 
-it.each(["expense", "payment"] as const)("confirms %s void and refreshes the authoritative dashboard", async (kind) => {
+it.each([
+  ["expense", ""], ["expense", "   "], ["expense", "Wrong record"],
+  ["payment", ""], ["payment", "   "], ["payment", "Wrong record"],
+] as const)("confirms %s void with optional note %j and refreshes the authoritative dashboard", async (kind, note) => {
   mockDashboard();
   vi.mocked(api.listExpenses).mockResolvedValue([expense]);
   vi.mocked(api.listSettlements).mockResolvedValue([payment]);
@@ -418,9 +421,12 @@ it.each(["expense", "payment"] as const)("confirms %s void and refreshes the aut
   fireEvent.click(history.getByRole("button", { name: `Delete ${kind}` }));
   const confirmation = within(history.getByRole("form", { name: `Delete ${kind}` }));
   expect(confirmation.getByText("This keeps the original record in history but removes it from current balances.")).toBeTruthy();
-  fireEvent.change(confirmation.getByLabelText("Reason"), { target: { value: "Wrong record" } });
+  const input = confirmation.getByLabelText("Note (optional)");
+  expect(input).toHaveProperty("required", false);
+  expect(input.getAttribute("placeholder")).toBe("Add a note for your records (optional)");
+  fireEvent.change(input, { target: { value: note } });
   fireEvent.click(confirmation.getByRole("button", { name: `Confirm delete ${kind}` }));
-  await waitFor(() => expect(kind === "expense" ? api.voidExpense : api.voidSettlement).toHaveBeenCalledWith(trip.id, kind === "expense" ? expense.id : payment.id, "Wrong record"));
+  await waitFor(() => expect(kind === "expense" ? api.voidExpense : api.voidSettlement).toHaveBeenCalledWith(trip.id, kind === "expense" ? expense.id : payment.id, note.trim() || null));
   await waitFor(() => expect(api.getBalances).toHaveBeenCalledTimes(2));
   view.rerender(<AuthProvider><TripDashboard tripId={trip.id} section="balances" /></AuthProvider>);
   expect(await screen.findByText("Everyone is settled up.")).toBeTruthy();
@@ -482,7 +488,7 @@ it.each(["expense", "payment"] as const)("separates current %ss from read-only h
   fireEvent.click(current.getByRole("link", { name: "View edit history" }));
   expect(disclosure.open).toBe(true);
   const history = within(disclosure.querySelector(".expense-list")!);
-  expect(history.getByText("Reason: Duplicate")).toBeTruthy();
+  expect(history.getByText("Note: Duplicate")).toBeTruthy();
   expect(history.getByRole("link", { name: `Replaced by another ${kind} · NT$500` }).getAttribute("href")).toBe(`#${kind}-latest`);
   expect(history.getByRole("link", { name: `Replaces an earlier ${kind} · NT$300` }).getAttribute("href")).toBe(`#${kind}-earlier`);
   expect(history.queryByRole("button")).toBeNull();
@@ -540,7 +546,7 @@ it.each([
   if (kind === "expense") render(<ExpenseHistory expenses={[expense]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
   else render(<PaymentHistory payments={[payment]} travelers={travelers} tripId={trip.id} onChanged={onChanged} />);
   fireEvent.click(await screen.findByRole("button", { name: operation === "void" ? `Delete ${kind}` : "Edit" }));
-  fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Fix" } });
+  fireEvent.change(screen.getByLabelText(operation === "void" ? "Note (optional)" : "Reason"), { target: { value: "Fix" } });
   fireEvent.click(await screen.findByRole("button", { name: operation === "void" ? `Confirm delete ${kind}` : "Save changes" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", error.message);
   expect(onChanged).not.toHaveBeenCalled();
@@ -747,4 +753,15 @@ it("offers retry instead of a login form when the initial session check fails", 
   expect(screen.queryByText("Internal server diagnostics")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Retry sign-in check" }));
   expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+});
+
+
+it.each(["expense", "payment"] as const)("hides absent deletion notes in %s audit details", (kind) => {
+  const audit = { status: "voided" as const, void_reason: null, void_created_at: "2026-10-04T09:00:00Z" };
+  if (kind === "expense") render(<ExpenseHistory expenses={[{ ...expense, ...audit }]} travelers={travelers} tripId={trip.id} onChanged={vi.fn()} />);
+  else render(<PaymentHistory payments={[{ ...payment, ...audit }]} travelers={travelers} tripId={trip.id} onChanged={vi.fn()} />);
+  fireEvent.click(screen.getByText(`Show ${kind} history (1)`));
+  expect(screen.getByText("Voided", { selector: "strong" })).toBeTruthy();
+  expect(screen.queryByText(/Note:|Reason:/)).toBeNull();
+  expect(screen.getByText(new Date(audit.void_created_at).toLocaleString())).toBeTruthy();
 });

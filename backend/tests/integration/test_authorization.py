@@ -410,3 +410,17 @@ def test_author_can_correct_payment_to_be_the_recipient(trip_accounts):
     assert response.status_code == 201
     assert response.json()["from_member_id"] == replacement["from_member_id"]
     assert response.json()["to_member_id"] == replacement["to_member_id"]
+
+
+@pytest.mark.parametrize("kind", ["expenses", "settlements"])
+def test_note_less_void_preserves_owner_author_and_idor_rules(trip_accounts, kind):
+    t = trip_accounts
+    payload = t["expense"] if kind == "expenses" else t["settlement"]
+    record = t["author"].post(t["base"] + "/" + kind, json=payload)
+    assert record.status_code == 201
+    path = t["base"] + "/" + kind + "/" + record.json()["id"]
+    assert t["member"].post(path + "/void", json={}).status_code == 403
+    assert t["outsider"].post(path + "/void", json={}).status_code == 404
+    assert t["author"].get(t["base"] + "/" + kind).json()[0]["status"] == "active"
+    assert t["owner"].post(path + "/void", json={}).status_code == 200
+    assert t["author"].get(t["base"] + "/" + kind).json()[0]["void_reason"] is None

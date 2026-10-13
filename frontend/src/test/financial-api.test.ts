@@ -117,3 +117,15 @@ it("confirms an exact suggestion with CSRF through the dedicated no-store endpoi
     headers: { "Content-Type": "application/json", "X-CSRF-Token": "csrf-test" },
   }));
 });
+
+
+it.each(["expense", "payment"] as const)("preserves omitted and null optional %s notes in the typed API client", async (kind) => {
+  const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ id: "record", status: "voided", void_reason: null }), { status: 200 })));
+  vi.stubGlobal("fetch", fetch);
+  const method = kind === "expense" ? api.voidExpense : api.voidSettlement;
+  await method("trip", "original");
+  await method("trip", "original", null);
+  expect(fetch.mock.calls[0][1].body).toBe("{}");
+  expect(fetch.mock.calls[1][1].body).toBe('{"reason":null}');
+  for (const [, options] of fetch.mock.calls) expect(options).toMatchObject({ method: "POST", cache: "no-store", headers: { "X-CSRF-Token": "csrf-test" } });
+});

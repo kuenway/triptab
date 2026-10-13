@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -997,7 +998,7 @@ def test_stale_active_check_duplicate_void_maps_to_conflict(
 
 
 @pytest.mark.parametrize("kind", ["expenses", "settlements"])
-def test_blank_void_reason_keeps_record_active(client, correction_trip, kind):
+def test_blank_void_reason_normalizes_to_absent_note(client, correction_trip, kind):
     gid, _, expense, payment = correction_trip
     target = (
         expense
@@ -1007,6 +1008,111 @@ def test_blank_void_reason_keeps_record_active(client, correction_trip, kind):
     path = f"/api/v1/groups/{gid}/{kind}"
     assert (
         client.post(f"{path}/{target['id']}/void", json={"reason": "  "}).status_code
-        == 422
+        == 200
     )
-    assert client.get(path).json() == [target]
+    stored = client.get(path).json()
+    assert len(stored) == 1
+    assert stored[0]["status"] == "voided"
+    assert stored[0]["void_reason"] is None
+
+
+@pytest.mark.parametrize("kind", ["expenses", "settlements"])
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ({}, None),
+        ({"reason": None}, None),
+        ({"reason": ""}, None),
+        ({"reason": " \t\n\u3000 "}, None),
+        ({"reason": "  Entered twice  "}, "  Entered twice  "),
+    ],
+)
+def test_optional_deletion_notes_preserve_financial_audit(
+    client, correction_trip, db_session, kind, body, expected
+):
+    gid, ids, expense, payment = correction_trip
+    target = (
+        expense
+        if kind == "expenses"
+        else client.post(f"/api/v1/groups/{gid}/settlements", json=payment).json()
+    )
+    path = f"/api/v1/groups/{gid}/{kind}/{target['id']}"
+    response = client.post(path + "/void", json=body)
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
+    stored = response.json()
+    for key in target:
+        if key not in {
+            "status",
+            "void_reason",
+            "void_created_at",
+            "void_created_by_user_id",
+        }:
+            assert stored[key] == target[key]
+    assert stored["status"] == "voided"
+    assert stored["void_reason"] == expected
+    assert stored["void_created_at"]
+    assert (
+        stored["void_created_by_user_id"]
+        == client.get("/api/v1/auth/me").json()["user"]["id"]
+    )
+    assert stored["replaced_by_id"] is None
+    if kind == "expenses":
+        assert client.get(path).json() == stored
+    assert client.get(f"/api/v1/groups/{gid}/{kind}").json() == [stored]
+    amounts = [0, 0, 0] if kind == "expenses" else [600, -300, -300]
+    assert balances(client, gid) == dict(zip(ids, amounts, strict=True))
+    suggestions = client.get(f"/api/v1/groups/{gid}/settlement-suggestions").json()[
+        "suggestions"
+    ]
+    assert len(suggestions) == (0 if kind == "expenses" else 2)
+    table = "expense_voids" if kind == "expenses" else "settlement_voids"
+    key = "expense_id" if kind == "expenses" else "settlement_id"
+    assert db_session.execute(
+        text(f"SELECT reason FROM {table} WHERE {key}=:id"), {"id": UUID(target["id"])}
+    ).one() == (expected,)
+    assert client.post(path + "/void", json={}).status_code == 409
+    assert (
+        db_session.scalar(
+            text(f"SELECT count(*) FROM {table} WHERE {key}=:id"),
+            {"id": UUID(target["id"])},
+        )
+        == 1
+    )
+
+
+@pytest.mark.parametrize("kind", ["expenses", "settlements"])
+@pytest.mark.parametrize("body", [{"reason": 42}, {"reason": []}, {"reason": {}}])
+def test_optional_note_rejects_non_string_without_void(
+    client, correction_trip, kind, body
+):
+    gid, _, expense, payment = correction_trip
+    target = (
+        expense
+        if kind == "expenses"
+        else client.post(f"/api/v1/groups/{gid}/settlements", json=payment).json()
+    )
+    path = f"/api/v1/groups/{gid}/{kind}/{target['id']}"
+    assert client.post(path + "/void", json=body).status_code == 422
+    assert client.get(f"/api/v1/groups/{gid}/{kind}").json() == [target]
+
+
+@pytest.mark.parametrize("kind", ["expenses", "settlements"])
+@pytest.mark.parametrize("reason", [None, "", " \t "])
+def test_optional_notes_do_not_relax_correction_reasons(
+    client, correction_trip, kind, reason
+):
+    gid, ids, expense, payment = correction_trip
+    target = (
+        expense
+        if kind == "expenses"
+        else client.post(f"/api/v1/groups/{gid}/settlements", json=payment).json()
+    )
+    replacement = equal_payload(ids[0], ids) if kind == "expenses" else payment
+    path = f"/api/v1/groups/{gid}/{kind}/{target['id']}"
+    for body in (
+        {"replacement": replacement},
+        {"reason": reason, "replacement": replacement},
+    ):
+        assert client.post(path + "/corrections", json=body).status_code == 422
+        assert client.get(f"/api/v1/groups/{gid}/{kind}").json() == [target]

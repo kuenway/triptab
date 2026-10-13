@@ -77,7 +77,7 @@ export function FinancialTimeline({ expenses, payments, travelers, tripId, error
                   <p>{expense ? "Expense occurred" : "External transfer occurred"} <time dateTime={record.occurred_at}>{new Date(record.occurred_at).toLocaleString()}</time></p>
                   {expense ? <><p>{expense.split_strategy === "equal" ? "Equal split" : "Exact split"}</p><ul className="history-allocations">{expense.splits.map((split) => <li key={split.member_id}><span>{name(split.member_id)}</span><strong>{money(split.amount)}</strong></li>)}</ul></> : <p>TripTab records the settlement; it does not transfer money.</p>}
                   {action === "edited" ? <><p>Correction of an earlier {kind}.</p>{previous?.void_reason ? <p>Reason: {previous.void_reason}</p> : null}</> : null}
-                  {action === "removed" && record.void_reason ? <p>Reason: {record.void_reason}</p> : null}
+                  {action === "removed" && record.void_reason?.trim() ? <p>Note: {record.void_reason}</p> : null}
                   {action !== "removed" && record.status === "voided" ? <p>This version is preserved in history and excluded from current balances.</p> : null}
                   {activePayment && (owner || record.created_by_user_id === user?.id) ? editing === record.id ? <div role="group" aria-label="Edit payment"><PaymentForm tripId={tripId} travelers={travelers} initialPayment={payment} onCancel={() => setEditing(null)} onRecorded={async () => { await onChanged(); setEditing(null); }} /></div> : <FinancialActions tripId={tripId} record={record} kind="payment" onChanged={onChanged} onEdit={() => setEditing(record.id)} correction={() => null} /> : null}
                 </div>

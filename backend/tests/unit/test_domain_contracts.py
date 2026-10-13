@@ -218,7 +218,9 @@ def test_void_values_are_immutable_and_validate_audit_fields(kind):
     with pytest.raises(FrozenInstanceError):
         void.reason = "rewrite"
     for changes in (
-        {"reason": "  "},
+        {"reason": "  ", "replacement_id": uuid4()},
+        {"reason": None, "replacement_id": uuid4()},
+        {"reason": 42},
         {"created_at": datetime(2026, 1, 1)},
         {"created_by_user_id": "bad"},
         {"replacement_id": values[f"{kind}_id"]},
@@ -232,3 +234,21 @@ def test_guest_cannot_be_owner_and_roles_are_explicit():
         GroupMember(uuid4(), uuid4(), "Guest", role="owner")
     with pytest.raises(DomainValidationError):
         GroupMember(uuid4(), uuid4(), "Member", role="admin")
+
+
+@pytest.mark.parametrize("kind", ["expense", "settlement"])
+@pytest.mark.parametrize("reason", [None, "", " \t\n\u3000"])
+def test_deletion_note_normalization_preserves_immutable_audit(kind, reason):
+    from app.domain import ExpenseVoid, SettlementVoid
+
+    cls = ExpenseVoid if kind == "expense" else SettlementVoid
+    value = cls(
+        **{
+            f"{kind}_id": uuid4(),
+            "group_id": uuid4(),
+            "reason": reason,
+            "created_at": datetime.now(UTC),
+            "created_by_user_id": uuid4(),
+        }
+    )
+    assert value.reason is None
