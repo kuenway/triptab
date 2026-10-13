@@ -211,9 +211,29 @@ timestamps and replacement links. **View edit history** opens the previous versi
 [correction APIs and migration notes](docs/persistence.md).
 
 
-Password recovery is available through Sign in → Forgot password. It uses hashed,
-30-minute, single-use email tokens and revokes all sessions after reset. Local
-email delivery is disabled by default; tests use an in-memory sender. Resend
-production setup and deployment are separate approval steps. See
-[authentication](docs/authentication.md#password-recovery-m19b) and
-[release setup](docs/deployment.md#m19b-password-recovery-release-setup-not-performed-by-implementation).
+Password recovery is implemented but OFF by default. The authoritative backend
+flag is `TRIPTAB_PASSWORD_RECOVERY_ENABLED=false`; the separate frontend build-time
+visibility flag is `NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED=false`. Disabled
+endpoints return generic 503 without recovery work, and direct pages show unavailable.
+Registration/Change password retain the shared policy. Enabled recovery uses hashed,
+30-minute, single-use email tokens and revokes all sessions; tests inject fake email.
+See [authentication](docs/authentication.md#password-recovery-m19b) and the
+[future release with recovery OFF](docs/deployment.md#m20b-release-with-recovery-off).
+
+CI explicitly builds with recovery ON for the full Playwright regressions, then
+rebuilds OFF for the full suite including disabled-route/API smoke. To reproduce each production-mode
+browser pass locally, build and run with the **same** public flag value:
+
+```sh
+NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED=true TRIPTAB_API_ORIGIN=http://127.0.0.1:8100 npm run build
+NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED=true E2E_PRODUCTION=true npm run test:e2e
+NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED=false TRIPTAB_API_ORIGIN=http://127.0.0.1:8100 npm run build
+NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED=false E2E_PRODUCTION=true npm run test:e2e
+```
+
+Use the dedicated local `E2E_DATABASE_URL` configured above for both passes.
+The guarded local harness aligns its backend gate with that public test flag and
+always uses an in-memory sender; production `app.main` never uses that harness.
+Frontend `.env.local` or process/build settings must provide its public flag; the
+backend's root `.env` is not automatically loaded by Next.js. Resend/DNS and
+production activation remain separately approved operator actions.

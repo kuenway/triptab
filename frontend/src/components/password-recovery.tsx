@@ -3,9 +3,34 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { api, ApiError, invitationToken } from "../lib/api";
+import { passwordRecoveryEnabled } from "../lib/feature-flags";
 import { AuthShell } from "./auth";
 
 export function ForgotPassword() {
+  return passwordRecoveryEnabled() ? <ForgotPasswordForm /> : <RecoveryUnavailable />;
+}
+
+export function ResetPassword() {
+  return passwordRecoveryEnabled() ? <ResetPasswordForm /> : <RecoveryUnavailable />;
+}
+
+function RecoveryUnavailable() {
+  useEffect(() => {
+    const clearFragment = () => {
+      if (window.location.hash) window.history.replaceState(window.history.state, "", window.location.pathname);
+    };
+    clearFragment();
+    window.addEventListener("hashchange", clearFragment);
+    return () => window.removeEventListener("hashchange", clearFragment);
+  }, []);
+  return <AuthShell><section className="panel recovery-panel">
+    <h1>Password recovery unavailable</h1>
+    <p role="status">Password recovery is currently unavailable.</p>
+    <Link href="/login">Back to Sign in</Link>
+  </section></AuthShell>;
+}
+
+function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -35,7 +60,7 @@ export function ForgotPassword() {
   </section></AuthShell>;
 }
 
-export function ResetPassword() {
+function ResetPasswordForm() {
   const [token, setToken] = useState<string | null | undefined>(undefined);
   const captured = useRef(false);
   const [password, setPassword] = useState("");

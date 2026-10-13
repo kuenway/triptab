@@ -101,6 +101,7 @@ def policy_mail(raw_client, monkeypatch):
             self.urls.append(reset_url)
 
     sender = Sender()
+    monkeypatch.setenv("TRIPTAB_PASSWORD_RECOVERY_ENABLED", "true")
     monkeypatch.setenv("TRIPTAB_FRONTEND_BASE_URL", "http://testserver")
     get_settings.cache_clear()
     app.dependency_overrides[get_password_reset_email_sender] = lambda: sender

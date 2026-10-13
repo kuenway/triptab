@@ -29,7 +29,12 @@ from app.application.auth import (
     AuthContext,
     AuthService,
 )
-from app.application.recovery import FORGOT_MESSAGE, PasswordRecoveryService
+from app.application.recovery import (
+    FORGOT_MESSAGE,
+    RECOVERY_UNAVAILABLE,
+    PasswordRecoveryService,
+    PasswordRecoveryUnavailable,
+)
 from app.config import get_settings
 from app.email import PasswordResetEmailSender, deliver_password_reset
 from app.operations import RateLimited, require_auth_rate_limit
@@ -103,6 +108,12 @@ class AuthResponse(RequestModel):
             ),
             csrf_token=context.csrf_token,
         )
+
+
+def require_recovery_enabled() -> None:
+    # Router dependencies run before session/sender dependencies or recovery work.
+    if not get_settings().password_recovery_enabled:
+        raise PasswordRecoveryUnavailable(RECOVERY_UNAVAILABLE)
 
 
 def set_session_cookie(response: Response, token: str) -> None:
@@ -207,7 +218,9 @@ def change_password(
 
 
 @router.post(
-    "/forgot-password", status_code=202, dependencies=[Depends(require_origin)]
+    "/forgot-password",
+    status_code=202,
+    dependencies=[Depends(require_origin), Depends(require_recovery_enabled)],
 )
 def forgot_password(
     payload: RecoveryEmail,
@@ -242,7 +255,11 @@ def forgot_password(
 @router.post(
     "/reset-password",
     status_code=204,
-    dependencies=[Depends(require_origin), Depends(require_auth_rate_limit)],
+    dependencies=[
+        Depends(require_origin),
+        Depends(require_recovery_enabled),
+        Depends(require_auth_rate_limit),
+    ],
 )
 def reset_password(
     payload: ResetPassword, response: Response, session: SessionDependency

@@ -37,6 +37,12 @@ OLD = "Original recovery password 123"
 NEW = "Recovered password 456"
 
 
+@pytest.fixture(autouse=True)
+def enabled_recovery(isolated_configuration, monkeypatch):
+    monkeypatch.setenv("TRIPTAB_PASSWORD_RECOVERY_ENABLED", "true")
+    get_settings.cache_clear()
+
+
 class FakeEmailSender:
     def __init__(self):
         self.messages = []

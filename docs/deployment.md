@@ -279,31 +279,84 @@ Release only after review, push, green CI and explicit production migration
 approval, then manual Render/Vercel release; automatic deployment stays disabled.
 
 
-## M19B password recovery release setup (not performed by implementation)
+## M20B release with recovery OFF
 
-Before release, arrange a transactional Resend account, verify a sending domain
-and sender externally, and supply a restricted send-only API key securely to
-Render. Domain verification/DNS/provider accounts are operator setup tasks;
-this milestone neither performs them nor requests keys. Check plan/cost limits
-before any provider signup; no paid upgrade or account is authorized here.
+This is a future, separately approved release plan, not an implementation action.
+Production remains on M19A / `20261012_0006`; M19B + M20A + M20B may be released
+without transactional email. The repository head remains `20261012_0007`.
 
-Backend-only required variables:
+Set both gates OFF for that release:
 
-| Variable | Required value |
+| Environment | Variable | Value |
+| --- | --- | --- |
+| Render backend | TRIPTAB_PASSWORD_RECOVERY_ENABLED | false |
+| Vercel frontend build | NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED | false |
+
+The backend is authoritative. The frontend flag is visibility only and introduces
+no extra Home request. Next.js embeds direct `NEXT_PUBLIC_*` references at build
+time: changing the Vercel flag requires a new build/deployment, not merely changing
+a running environment. Never expose provider keys through public variables.
+See [Next.js environment variables](https://nextjs.org/docs/app/guides/environment-variables).
+
+Keep Render automatic deployment OFF. Environment changes must be intentional:
+choose **Save only** when staging, then manually deploy the approved exact commit.
+Other save choices can deploy/rebuild immediately. See
+[Render environment variables](https://render.com/docs/configure-environment-variables).
+
+Release checklist:
+
+1. Confirm the approved exact SHA and green CI; verify current production health.
+2. Create an encrypted Neon PostgreSQL backup using the existing protected
+   [backup procedure](operations.md#backup-and-recovery), outside Git.
+3. Verify production is exactly `20261012_0006`; stop if the state differs.
+4. Apply `20261012_0006 -> 20261012_0007` exactly once, then verify Alembic
+   current/check and preservation of Users, Trips, financial history, sessions and
+   invitations. Existing M19A application must remain operational before deployment.
+5. Stage Render `TRIPTAB_PASSWORD_RECOVERY_ENABLED=false` without requiring
+   `RESEND_API_KEY`, sender settings or DNS/Resend setup. Keep existing TLS,
+   Origin/cookie/CSRF settings and the one-worker Free service.
+6. Deploy Render at the approved exact SHA. Verify health/readiness, Registration,
+   Sign in, Change password, financial APIs, and both recovery endpoints' generic
+   503/no-store behavior with no state mutation or email.
+7. Build/deploy Vercel at that SAME SHA with public visibility flag false and Node
+   22. Verify Forgot password is hidden; both direct recovery routes are unavailable
+   and clear reset fragments. Check M20A loading, auth, Trip navigation and finance.
+8. Review logs for unexpected errors/migration issues and secret/token/password/key
+   leakage. Confirm no real recovery email was sent. No paid resources/add-ons,
+   resource recreation, automatic deploy or production SQL cleanup is authorized.
+
+No production actions are performed by M20B implementation. Migration 0007's table
+may remain dormant with both gates OFF; no schema/backfill/history changes are needed.
+
+## Future password recovery activation
+
+After separate approval:
+
+1. Obtain a domain with DNS control.
+2. Verify the sending domain with the exact DNS records supplied by Resend.
+3. Create a dedicated Sending-only API key restricted to the sending domain.
+4. Configure backend-only values below securely, keeping recovery OFF while staging.
+5. Send one controlled provider-level test message to an address the operator
+   controls. Verify actual receipt; do not create/consume a TripTab reset token.
+6. Enable backend `TRIPTAB_PASSWORD_RECOVERY_ENABLED=true`; production refuses
+   incomplete/invalid email configuration. Apply through a deliberate manual deploy.
+7. Enable frontend `NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED=true`.
+8. Rebuild/deploy at the approved SHA with Node 22; flag changes are not runtime toggles.
+9. Run a disposable-account recovery smoke: generic known/unknown 202 responses,
+   received fragment-only links, password-policy rejection preserving the token,
+   valid passphrase reset, all-session revocation, explicit Sign in, old-password
+   rejection/new-password acceptance, single-use and latest-link-wins. Review safe logs.
+
+| Backend-only variable | Required value when enabled in production |
 | --- | --- |
 | TRIPTAB_PASSWORD_RESET_EMAIL_PROVIDER | resend |
-| RESEND_API_KEY | Provider secret; no repository or frontend copy |
-| TRIPTAB_PASSWORD_RESET_FROM_EMAIL | Verified sender address |
-| TRIPTAB_FRONTEND_BASE_URL | Exact allowed HTTPS production frontend origin |
+| RESEND_API_KEY | Provider secret, only in protected backend configuration |
+| TRIPTAB_PASSWORD_RESET_FROM_EMAIL | Bare email address on the verified sending domain |
+| TRIPTAB_FRONTEND_BASE_URL | https://triptab-hazel.vercel.app, matching allowed Origins |
 
-Use the original fragment-bearing reset URL; disable click/open tracking for auth
-mail and do not add redirect/analytics wrapping that could expose the bearer.
-Resend accepts a minimal plain-text payload; no marketing template is involved.
-Missing configuration is operationally visible but intentionally indistinguishable
-in the public forgot-password response. Do not interpret 202 as proof of delivery.
-
-After implementation approval/push/green CI, a separately approved release must
-apply 20261012_0007 after 0006, verify, deploy the exact backend commit, then deploy
-frontend and run approved disposable real-delivery smoke. Existing Free/Hobby
-plans, manual deployment ordering, TLS and provider resources remain unchanged.
-Do not deploy M19B or migrate production as part of local implementation.
+The adapter adds `TripTab <...>` to the bare sender. Domain ownership/verification
+must be confirmed externally; the shared Vercel hostname is not an assumed sending
+domain. Preserve original fragment-bearing reset URLs and disable click/open
+tracking; no redirect/analytics wrapper or marketing template is needed. Do not
+interpret enabled-mode generic 202 as proof of actual email delivery. Provider
+setup, real email, paid upgrades and activation are not performed in this milestone.

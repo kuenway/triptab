@@ -52,6 +52,9 @@ class Settings(BaseModel):
         default=60, ge=1, le=3600, alias="TRIPTAB_AUTH_RATE_WINDOW"
     )
 
+    password_recovery_enabled: bool = Field(
+        default=False, strict=True, alias="TRIPTAB_PASSWORD_RECOVERY_ENABLED"
+    )
     password_reset_email_provider: Literal["disabled", "resend"] = Field(
         default="disabled", alias="TRIPTAB_PASSWORD_RESET_EMAIL_PROVIDER"
     )
@@ -143,7 +146,9 @@ class Settings(BaseModel):
             raise ValueError("cookie name must be valid for the /api/v1 cookie path")
         return value
 
-    @field_validator("cookie_secure", "debug", mode="before")
+    @field_validator(
+        "cookie_secure", "debug", "password_recovery_enabled", mode="before"
+    )
     @classmethod
     def boolean(cls, value: object) -> object:
         if isinstance(value, str):
@@ -165,6 +170,10 @@ class Settings(BaseModel):
         if self.cookie_name.startswith("__Secure-") and not self.cookie_secure:
             raise ValueError("__Secure- cookies require Secure")
         if self.environment == "production":
+            if self.password_recovery_enabled and not self.reset_email_configured:
+                raise ValueError(
+                    "production password recovery requires complete email configuration"
+                )
             if self.frontend_base_url and (
                 not self.frontend_base_url.startswith("https://")
                 or self.frontend_base_url not in self.allowed_origins

@@ -24,6 +24,13 @@ FORGOT_MESSAGE = (
 )
 
 
+RECOVERY_UNAVAILABLE = "Password recovery is currently unavailable."
+
+
+class PasswordRecoveryUnavailable(Exception):
+    """Recovery is disabled, independent of account/token existence."""
+
+
 class InvalidResetToken(Exception):
     """All unavailable reset tokens share one public failure."""
 

@@ -1,5 +1,7 @@
 import { expect, test, type Page, type APIRequestContext } from "@playwright/test";
 
+test.skip(process.env.NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED !== "true", "Requires an explicitly recovery-enabled build/test backend.");
+
 const OLD = "Recovery old password 123", NEW = "correct horse battery staple";
 async function register(page: Page, email: string) {
   await page.goto("/register"); await page.getByLabel("Display name").fill("Recovery user"); await page.getByLabel("Email", { exact: true }).fill(email); await expect(page.getByText("Use at least 12 characters. Passphrases are welcome. No special symbols are required.")).toBeVisible();

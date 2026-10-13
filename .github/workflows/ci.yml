@@ -62,6 +62,7 @@ jobs:
       TRIPTAB_API_ORIGIN: http://127.0.0.1:8100
       TRIPTAB_ENV: test
       E2E_PRODUCTION: "true"
+      NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED: "true"
     defaults:
       run:
         working-directory: frontend
@@ -86,3 +87,11 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - name: Build recovery-disabled frontend
+        run: npm run build
+        env:
+          NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED: "false"
+      - name: Verify recovery-disabled build
+        run: npm run test:e2e
+        env:
+          NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED: "false"

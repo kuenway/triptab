@@ -242,7 +242,26 @@ when null account names exist; it neither invents names nor discards accounts.
 
 ## Password recovery (M19B)
 
-`POST /api/v1/auth/forgot-password` accepts a normalized email and always returns
+M20B gates recovery OFF by default. `TRIPTAB_PASSWORD_RECOVERY_ENABLED=false`
+(or unset) is authoritative: both public recovery endpoints return 503 with
+`Password recovery is currently unavailable.` after Origin enforcement and before
+resolving database/email dependencies. They create/revoke/consume no reset tokens,
+change no passwords and revoke no sessions. Responses retain no-store and security
+headers. Invalid flag values fail safely; only true/false strings are accepted.
+Disabled 503s are logged with `recovery_disabled`, distinguishing them from unexpected
+server errors. Registration and authenticated Change password always keep the shared M19B policy.
+
+`NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED=false` (or unset) hides Forgot
+password and renders unavailable direct routes without recovery requests. Disabled
+reset pages discard fragments without parsing or persisting bearer tokens. Only
+literal `true` enables the frontend UI; this public build-time visibility flag
+cannot bypass the backend gate. There is no extra capability API/Home request.
+Both flags remain OFF for the initial release. Activation and manual release
+ordering are documented in [deployment](deployment.md#m20b-release-with-recovery-off).
+
+The following M19B lifecycle applies **when backend recovery is enabled**.
+
+`POST /api/v1/auth/forgot-password` accepts a normalized email and returns
 202 with the same generic message for known, unknown, null-name and
 non-login historical accounts, including when delivery fails. It returns no token,
 identity or delivery status. Only credentialed accounts can recover. Public auth

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, FormEvent, ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 
+import { passwordRecoveryEnabled } from "../lib/feature-flags";
 import { LoadingState } from "./loading-state";
 
 import { api, ApiError, AUTH_EXPIRED_EVENT, AuthState, CurrentUser, invitationToken } from "../lib/api";
@@ -162,7 +163,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         {error ? <p role="alert" className="alert">{error}</p> : null}
         <button disabled={saving || auth.loading} type="submit">{saving ? "Please wait…" : registering ? "Register" : "Sign in"}</button>
       </form>
-      {!registering ? <p><Link href="/forgot-password">Forgot password?</Link></p> : null}
+      {!registering && passwordRecoveryEnabled() ? <p><Link href="/forgot-password">Forgot password?</Link></p> : null}
       <p>{registering ? "Already have an account? " : "New to TripTab? "}<Link replace={Boolean(inviteToken)} href={`${registering ? "/login" : "/register"}${inviteToken ? `#token=${encodeURIComponent(inviteToken)}` : ""}`}>{registering ? "Sign in" : "Create an account"}</Link></p>
       {inviteToken ? <p><Link replace href="/invite">Cancel invitation</Link></p> : null}
     </section>

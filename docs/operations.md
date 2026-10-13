@@ -286,12 +286,19 @@ Configure backend-only `TRIPTAB_PASSWORD_RESET_EMAIL_PROVIDER=resend`,
 `RESEND_API_KEY`, `TRIPTAB_PASSWORD_RESET_FROM_EMAIL` (verified sender), and
 `TRIPTAB_FRONTEND_BASE_URL` (one explicit allowed HTTPS origin). Keys belong in
 provider secret storage, never frontend variables, Git, shell arguments or logs.
-`disabled` is the default for local development; tests inject a sender and need
-no provider credentials. Missing/partial production email configuration keeps the
-existing backend commands usable but emits `password_reset_email` /
-`missing_configuration` at startup; recovery cannot send until configured.
+Recovery itself is OFF by default via `TRIPTAB_PASSWORD_RECOVERY_ENABLED=false`.
+Both endpoints then return a generic 503 before database/email work; missing email
+configuration does not prevent startup or affect other authentication/financial APIs.
+Do not interpret the email provider setting as the recovery gate.
 
-The public response is always generic, including missing-config/provider failures.
+With recovery ON in production, configuration validation requires provider `resend`,
+a nonempty secret, a syntactically valid bare sender address and an allowed HTTPS
+frontend origin. Incomplete/invalid configuration prevents startup with a redacted
+error. Syntax validation does not prove Resend domain verification or actual delivery;
+those require the controlled provider check. Tests explicitly enable the gate and
+inject a sender only in local/test environments, with no provider credentials.
+
+When enabled, the public Forgot response is generic even for provider failures.
 Post-response delivery failure emits `delivery_failure` with request ID and
 revokes only that delivery's unused token. Failed revocation emits
 `invalidation_failure`. Inspect categories/request IDs; never log provider

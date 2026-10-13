@@ -12,6 +12,7 @@ def isolated_configuration(monkeypatch):
     monkeypatch.setenv("TRIPTAB_ENV", "test")
     monkeypatch.setenv("TRIPTAB_AUTH_RATE_LIMIT", "10000")
     monkeypatch.setenv("TRIPTAB_AUTH_GLOBAL_LIMIT", "10000")
+    monkeypatch.setenv("TRIPTAB_PASSWORD_RECOVERY_ENABLED", "false")
     # Never inherit live email configuration into a local test run.
     monkeypatch.setenv("TRIPTAB_PASSWORD_RESET_EMAIL_PROVIDER", "disabled")
     for key in [

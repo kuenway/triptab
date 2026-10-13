@@ -8,6 +8,8 @@ if (parsed.protocol !== "postgresql+psycopg:" || !["localhost", "127.0.0.1"].inc
   throw new Error("E2E_DATABASE_URL must use postgresql+psycopg and a local *_e2e_test database.");
 }
 
+const recoveryEnabled = process.env.NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED === "true";
+
 export default defineConfig({
   testDir: "./e2e",
   workers: 1,
@@ -16,13 +18,13 @@ export default defineConfig({
     {
       command: "uv run --locked uvicorn recovery_app:app --app-dir tests --host 127.0.0.1 --port 8100" + (process.env.E2E_PRODUCTION === "true" ? " --workers 1 --limit-concurrency 8 --no-access-log --no-proxy-headers" : ""),
       cwd: resolve(__dirname, "../backend"),
-      env: { DATABASE_URL: databaseUrl, TRIPTAB_ENV: "test", TRIPTAB_FRONTEND_BASE_URL: "http://127.0.0.1:3100", TRIPTAB_COOKIE_SECURE: "false", TRIPTAB_ALLOWED_ORIGINS: "http://127.0.0.1:3100", TRIPTAB_AUTH_RATE_LIMIT: "100", TRIPTAB_AUTH_GLOBAL_LIMIT: "100" },
+      env: { DATABASE_URL: databaseUrl, TRIPTAB_ENV: "test", TRIPTAB_PASSWORD_RECOVERY_ENABLED: String(recoveryEnabled), TRIPTAB_FRONTEND_BASE_URL: "http://127.0.0.1:3100", TRIPTAB_COOKIE_SECURE: "false", TRIPTAB_ALLOWED_ORIGINS: "http://127.0.0.1:3100", TRIPTAB_AUTH_RATE_LIMIT: "100", TRIPTAB_AUTH_GLOBAL_LIMIT: "100" },
       url: "http://127.0.0.1:8100/health",
       reuseExistingServer: false,
     },
     {
       command: `${process.env.E2E_PRODUCTION === "true" ? "npm run start" : "npm run dev"} -- --hostname 127.0.0.1 --port 3100`,
-      env: { TRIPTAB_API_ORIGIN: "http://127.0.0.1:8100" },
+      env: { TRIPTAB_API_ORIGIN: "http://127.0.0.1:8100", NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED: String(recoveryEnabled) },
       url: "http://127.0.0.1:3100",
       reuseExistingServer: false,
     },

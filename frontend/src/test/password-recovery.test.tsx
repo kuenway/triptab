@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { StrictMode, type ReactNode } from "react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AuthForm, AuthProvider } from "../components/auth";
 import { ForgotPassword, ResetPassword } from "../components/password-recovery";
 import { api, ApiError } from "../lib/api";
@@ -11,7 +11,8 @@ vi.mock("../lib/api", async original => {
   return { ...value, api: Object.fromEntries(Object.keys(value.api).map(key => [key, vi.fn()])) };
 });
 const token = "a".repeat(43);
-beforeEach(() => { vi.resetAllMocks(); history.replaceState(null, "", "/"); localStorage.clear(); sessionStorage.clear(); vi.mocked(api.getMe).mockRejectedValue(new ApiError("Sign in required", 401)); vi.mocked(api.forgotPassword).mockResolvedValue({ message: "generic" }); vi.mocked(api.resetPassword).mockResolvedValue(undefined); });
+afterEach(() => vi.unstubAllEnvs());
+beforeEach(() => { vi.stubEnv("NEXT_PUBLIC_TRIPTAB_PASSWORD_RECOVERY_ENABLED", "true"); vi.resetAllMocks(); history.replaceState(null, "", "/"); localStorage.clear(); sessionStorage.clear(); vi.mocked(api.getMe).mockRejectedValue(new ApiError("Sign in required", 401)); vi.mocked(api.forgotPassword).mockResolvedValue({ message: "generic" }); vi.mocked(api.resetPassword).mockResolvedValue(undefined); });
 function page(children: ReactNode) { return render(<AuthProvider>{children}</AuthProvider>); }
 async function resetForm() {
   history.replaceState(null, "", "/reset-password#token=" + token); page(<StrictMode><ResetPassword /></StrictMode>);
