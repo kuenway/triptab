@@ -595,7 +595,7 @@ it("waits for current-user loading before reading private trips", async () => {
   vi.mocked(api.getMe).mockReturnValue(new Promise((done) => { resolve = done; }));
   vi.mocked(api.listTrips).mockResolvedValue([trip]);
   render(<Home />);
-  expect(screen.getByRole("status")).toHaveProperty("textContent", "Loading TripTab");
+  expect(screen.getByRole("status")).toHaveProperty("textContent", "Getting things ready…");
   expect(api.listTrips).not.toHaveBeenCalled();
   expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
   expect(screen.queryByLabelText("Email", { exact: true })).toBeNull();
@@ -729,7 +729,7 @@ it.each(["login", "register"] as const)("keeps %s loading exclusive until a 401 
   let reject!: (error: Error) => void;
   vi.mocked(api.getMe).mockReturnValue(new Promise((_, done) => { reject = done; }));
   render(<AuthForm mode={mode} />);
-  expect(screen.getByRole("status")).toHaveProperty("textContent", "Loading TripTab");
+  expect(screen.getByRole("status")).toHaveProperty("textContent", "Getting things ready…");
   expect(screen.queryByRole("heading")).toBeNull();
   expect(screen.queryByLabelText("Email", { exact: true })).toBeNull();
   await waitFor(() => expect(api.getMe).toHaveBeenCalled());

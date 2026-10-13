@@ -332,31 +332,25 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .recovery-panel a:focus-visible, .recovery-panel button:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
 .recovery-panel .button-link { display: inline-flex; align-items: center; min-height: 44px; }
 
-/* M20A: reveal after 250ms; cold-start copy after 5s, with no completion delay. */
+/* The existing request timers reveal one compact travel scene, never delay content. */
+.loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; width: 100%; max-width: 440px; min-height: 240px; margin-inline: auto; padding: 24px; border: 1px solid transparent; border-radius: 16px; }
 .loading-surface { visibility: hidden; }
+.loading-revealed { background: white; border-color: var(--line); }
 .loading-revealed .loading-surface { visibility: visible; }
-.loading-session .loading-surface { display: grid; gap: 20px; }
-.skeleton-bar { display: block; height: 16px; border-radius: 6px; background: var(--line); }
-.skeleton-heading { width: 48%; height: 28px; }
-.skeleton-field { display: grid; gap: 10px; }
-.skeleton-label { width: 22%; height: 12px; }
-.skeleton-input { width: 100%; height: 44px; }
-.skeleton-footer { width: 58%; height: 14px; }
 .loading-trips { margin-bottom: 24px; }
-.skeleton-trip-list { border: 1px solid var(--line); border-radius: 12px; background: white; overflow: hidden; }
-.skeleton-trip-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 72px; padding: 20px; }
-.skeleton-trip-row + .skeleton-trip-row { border-top: 1px solid var(--line); }
-.skeleton-trip-name { width: 48%; }
-.skeleton-trip-name-1 { width: 36%; }
-.skeleton-arrow { width: 16px; flex: 0 0 16px; }
-.loading-message { margin: 12px 0 0; font-size: .875rem; }
-.loading-session .loading-message { text-align: center; }
-.loading-revealed .skeleton-bar { animation: skeleton-pulse 2s ease-in-out infinite; }
-.auth-shell:has(.loading-revealed) .brand-dot, .trips-home:has(.loading-revealed) .brand-dot { animation: brand-dot-pulse 1.5s ease-in-out infinite; }
-@keyframes skeleton-pulse { 50% { opacity: .65; } }
-@keyframes brand-dot-pulse { 50% { opacity: .4; } }
+.loading-message { margin: 0; font-size: .875rem; text-align: center; }
+.travel-loading-illustration { display: block; width: 200px; max-width: 100%; height: auto; color: var(--ink); }
+.travel-ground { stroke: var(--line); }
+.travel-leg { transform-origin: 110px 78px; }
+.loading-revealed .travel-body, .loading-revealed .travel-suitcase, .loading-revealed .travel-leg, .loading-revealed .travel-ground { animation-duration: 1.6s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.loading-revealed .travel-body, .loading-revealed .travel-suitcase { animation-name: travel-step-lift; }
+.loading-revealed .travel-suitcase { animation-delay: -.4s; }
+.loading-revealed .travel-leg { animation-name: travel-walk; }
+.loading-revealed .travel-leg-back { animation-delay: -.8s; }
+.loading-revealed .travel-ground { animation-name: travel-path; animation-timing-function: linear; }
+@keyframes travel-walk { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+@keyframes travel-step-lift { 0%, 50%, 100% { transform: translateY(0); } 25%, 75% { transform: translateY(-1px); } }
+@keyframes travel-path { to { stroke-dashoffset: 16; } }
 @media (prefers-reduced-motion: reduce) {
-  .loading-revealed .skeleton-bar,
-  .auth-shell:has(.loading-revealed) .brand-dot,
-  .trips-home:has(.loading-revealed) .brand-dot { animation: none; }
+  .loading-revealed .travel-body, .loading-revealed .travel-suitcase, .loading-revealed .travel-leg, .loading-revealed .travel-ground { animation: none; }
 }

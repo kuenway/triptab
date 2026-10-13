@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Home from "../app/page";
 import { AuthForm, AuthProvider } from "../components/auth";
@@ -29,14 +29,14 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
-it("fast session and list responses render content immediately without revealing a skeleton", async () => {
+it("fast session and list responses render content immediately without revealing the traveler", async () => {
   await home();
   expect(screen.getByRole("link", { name: trip.name })).toBeTruthy();
   expect(document.querySelector(".loading-state")).toBeNull();
   expect(vi.getTimerCount()).toBe(0);
   expect(api.getMe).toHaveBeenCalledOnce(); expect(api.listTrips).toHaveBeenCalledOnce();
 });
-it("does not flash a list skeleton when its response arrives before 250ms", async () => {
+it("does not flash a list animation when its response arrives before 250ms", async () => {
   const read = deferred<Trip[]>(); vi.mocked(api.listTrips).mockReturnValue(read.promise);
   await home(); await advance(LOADING_REVEAL_DELAY_MS - 1);
   expect(document.querySelector(".loading-revealed")).toBeNull();
@@ -48,11 +48,14 @@ it("does not flash a list skeleton when its response arrives before 250ms", asyn
 it("unresolved auth remains neutral, reveals after 250ms and reports a cold start once", async () => {
   const session = deferred<AuthState>(); vi.mocked(api.getMe).mockReturnValue(session.promise);
   await home();
-  expect(screen.getByRole("status").textContent).toBe("Loading TripTab");
+  expect(screen.getByRole("status").textContent).toBe("Getting things ready…");
   expect(screen.queryByRole("heading")).toBeNull(); expect(api.listTrips).not.toHaveBeenCalled();
   await advance(LOADING_REVEAL_DELAY_MS - 1); expect(document.querySelector(".loading-revealed")).toBeNull();
   await advance(1); expect(document.querySelector(".loading-session.loading-revealed")).not.toBeNull();
-  expect(document.querySelector(".loading-surface")?.getAttribute("aria-hidden")).toBe("true");
+  expect(document.querySelector("svg.travel-loading-illustration")?.getAttribute("aria-hidden")).toBe("true");
+  expect(document.querySelector("svg.travel-loading-illustration")?.getAttribute("focusable")).toBe("false");
+  expect(document.querySelector(".skeleton-bar")).toBeNull();
+  expect(screen.getByRole("status").getAttribute("aria-live")).toBe("polite");
   expect(document.querySelector(".loading-surface button, .loading-surface a, .loading-surface [tabindex]")).toBeNull();
   expect(screen.queryByText("Loading…")).toBeNull();
   await advance(COLD_START_MESSAGE_DELAY_MS - LOADING_REVEAL_DELAY_MS - 1);
@@ -62,12 +65,13 @@ it("unresolved auth remains neutral, reveals after 250ms and reports a cold star
   expect(screen.getByRole("link", { name: trip.name })).toBeTruthy();
   expect(screen.queryByRole("status")).toBeNull(); expect(vi.getTimerCount()).toBe(0);
 });
-it("authenticated list loading represents two real row footprints without showing empty content", async () => {
+it("authenticated list loading uses the same traveler without showing empty content", async () => {
   const read = deferred<Trip[]>(); vi.mocked(api.listTrips).mockReturnValue(read.promise);
   await home(); await advance(LOADING_REVEAL_DELAY_MS);
   expect(screen.getByRole("heading", { name: "Your trips" })).toBeTruthy();
-  expect(screen.getByRole("status").textContent).toBe("Loading your trips");
-  expect(document.querySelectorAll(".skeleton-trip-row")).toHaveLength(2);
+  expect(screen.getByRole("status").textContent).toBe("Getting things ready…");
+  expect(document.querySelectorAll(".travel-loading-illustration")).toHaveLength(1);
+  expect(document.querySelector(".skeleton-bar")).toBeNull();
   expect(screen.queryByText("No trips yet.")).toBeNull(); expect(screen.queryByRole("list")).toBeNull();
   await advance(COLD_START_MESSAGE_DELAY_MS - LOADING_REVEAL_DELAY_MS);
   expect(screen.getByText("Starting TripTab…")).toBeTruthy();
@@ -99,7 +103,7 @@ it("a resolved 401 renders Sign in immediately with no trip content or leftover 
   expect(screen.queryByRole("status")).toBeNull(); expect(api.listTrips).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
 });
-it("a session failure exits the skeleton and the existing session Retry recovers", async () => {
+it("a session failure exits the travel scene and the existing session Retry recovers", async () => {
   const session = deferred<AuthState>(); vi.mocked(api.getMe).mockReturnValueOnce(session.promise).mockResolvedValueOnce(auth);
   await home(); await advance(COLD_START_MESSAGE_DELAY_MS);
   await act(async () => { session.reject(new ApiError("failure", 503)); });
@@ -112,4 +116,23 @@ it("a session failure exits the skeleton and the existing session Retry recovers
 it("cleans up both timers on unmount before either fires", () => {
   const view = render(<LoadingState variant="session" />);
   expect(vi.getTimerCount()).toBe(2); view.unmount(); expect(vi.getTimerCount()).toBe(0);
+});
+
+it("a session resolved at 249ms cancels the traveler reveal without delaying Trips", async () => {
+  const session = deferred<AuthState>(); vi.mocked(api.getMe).mockReturnValue(session.promise);
+  await home(); await advance(LOADING_REVEAL_DELAY_MS - 1);
+  expect(document.querySelector(".loading-revealed")).toBeNull();
+  await act(async () => { session.resolve(auth); });
+  expect(screen.getByRole("link", { name: trip.name })).toBeTruthy();
+  expect(document.querySelector(".travel-loading-illustration")).toBeNull();
+  expect(vi.getTimerCount()).toBe(0);
+  expect(api.getMe).toHaveBeenCalledOnce(); expect(api.listTrips).toHaveBeenCalledOnce();
+});
+it("StrictMode leaves one pair of timers and cleans both without extra status updates", async () => {
+  const view = render(<StrictMode><LoadingState variant="session" /></StrictMode>);
+  expect(vi.getTimerCount()).toBe(2);
+  await advance(COLD_START_MESSAGE_DELAY_MS);
+  expect(screen.getByRole("status").textContent).toBe("Starting TripTab…");
+  expect(document.querySelectorAll(".travel-loading-illustration")).toHaveLength(1);
+  view.unmount(); expect(vi.getTimerCount()).toBe(0);
 });
