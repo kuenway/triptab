@@ -33,7 +33,7 @@ it("renders name-only destinations with one list read and no per-Trip reads", as
 });
 it("distinguishes authenticated loading from empty and auth states", async () => {
   vi.mocked(api.listTrips).mockReturnValue(new Promise(() => {})); home();
-  expect(await screen.findByText("Loading trips…")).toBeTruthy();
+  expect(await screen.findByRole("status")).toBeTruthy();
   expect(screen.getByRole("heading", { name: "Your trips" })).toBeTruthy();
   expect(screen.queryByText("No trips yet.")).toBeNull(); expect(screen.queryByRole("heading", { name: "Sign in" })).toBeNull();
 });

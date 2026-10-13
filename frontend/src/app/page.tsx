@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AccountMenu, RequireAuth } from "../components/auth";
+import { LoadingState } from "../components/loading-state";
 import { NewTripDialog } from "../components/new-trip-dialog";
 import { api, Trip } from "../lib/api";
 
@@ -29,7 +30,7 @@ function TripList() {
     <header className="site-header"><Link href="/" className="wordmark">TripTab<span className="brand-dot">.</span></Link><AccountMenu /></header>
     <section className="trips-workspace" aria-labelledby="trips-heading">
       <h1 id="trips-heading">Your trips</h1>
-      {loading ? <p className="muted trips-state" role="status">Loading trips…</p> : error ? <div className="trips-state"><p role="alert" className="alert">{error}</p><button className="payment-button" onClick={() => void load()}>Retry trips</button></div> : trips.length === 0 ? <div className="trips-state"><h2>No trips yet.</h2><p className="muted">Create your first trip to start sharing expenses.</p></div> : <ul className="trip-list" aria-label="Your trips">
+      {loading ? <LoadingState variant="trips" /> : error ? <div className="trips-state"><p role="alert" className="alert">{error}</p><button className="payment-button" onClick={() => void load()}>Retry trips</button></div> : trips.length === 0 ? <div className="trips-state"><h2>No trips yet.</h2><p className="muted">Create your first trip to start sharing expenses.</p></div> : <ul className="trip-list" aria-label="Your trips">
         {trips.map((trip) => <li key={trip.id}><Link className="trip-row" href={`/trips/${trip.id}`}>
           <span className="trip-row-main"><strong>{trip.name}</strong></span>
           <svg className="trip-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>

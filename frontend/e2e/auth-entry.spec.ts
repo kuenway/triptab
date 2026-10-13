@@ -6,7 +6,7 @@ test("auth entry stays exclusive while checking, fits mobile, and resumes an inv
   const pending = new Promise<void>((resolve) => { release = resolve; });
   await page.route("**/api/v1/auth/me", async (route) => { await pending; await route.continue(); });
   await page.goto("/");
-  await expect(page.getByRole("status")).toHaveText("Loading…");
+  await expect(page.getByRole("status")).toHaveText("Loading TripTab");
   await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
   await expect(page.getByLabel("Email", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Trip name")).toHaveCount(0);
@@ -41,7 +41,7 @@ test("auth entry stays exclusive while checking, fits mobile, and resumes an inv
   const checking = new Promise<void>((resolve) => { resume = resolve; });
   await page.route("**/api/v1/auth/me", async (route) => { await checking; await route.continue(); });
   await page.reload();
-  await expect(page.getByRole("status")).toHaveText("Loading…");
+  await expect(page.getByRole("status")).toHaveText("Loading TripTab");
   await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
   resume();
   await expect(page.getByRole("button", { name: "+ New trip", exact: true })).toBeVisible();

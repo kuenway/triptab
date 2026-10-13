@@ -150,6 +150,12 @@ npm test
 TRIPTAB_API_ORIGIN=http://127.0.0.1:8000 npm run build
 ```
 
+Entry loading keeps session resolution (`/auth/me`) separate from the authenticated
+trip list (`/groups`). Each unresolved phase reveals its skeleton after 250 ms and
+shows “Starting TripTab…” after 5 seconds. Completed requests render immediately;
+errors keep their existing Retry actions. Only the brand dot and skeleton bars
+pulse, with static feedback when reduced motion is requested.
+
 From the repository root, stop PostgreSQL with `docker compose down`. Its named
 volume retains local data. Do not delete the preserved legacy volumes or use
 `docker compose down -v` during this transition.

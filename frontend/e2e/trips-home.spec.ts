@@ -86,7 +86,7 @@ test("Trips home keeps read errors and creation validation local", async ({ page
   await expect(page.getByRole("heading", { name: "No trips yet.", exact: true })).toBeVisible();
   let release!: () => void; const gate = new Promise<void>(done => { release = done; });
   await page.route("**/api/v1/groups", async route => { await gate; await route.fulfill({ status: 503, contentType: "application/json", body: '{"detail":"Read failure"}' }); });
-  await page.reload(); await expect(page.getByText("Loading trips…", { exact: true })).toBeVisible();
+  await page.reload(); await expect(page.locator(".loading-trips.loading-revealed .loading-surface")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Your trips", exact: true })).toBeVisible(); release();
   await expect(page.getByRole("button", { name: "Retry trips", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "No trips yet.", exact: true })).toHaveCount(0);

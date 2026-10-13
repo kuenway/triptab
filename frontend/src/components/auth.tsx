@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, FormEvent, ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 
+import { LoadingState } from "./loading-state";
+
 import { api, ApiError, AUTH_EXPIRED_EVENT, AuthState, CurrentUser, invitationToken } from "../lib/api";
 
 type Authentication = {
@@ -62,9 +64,10 @@ export function AuthShell({ children }: { children: ReactNode }) {
 
 function AuthStatus() {
   const auth = useAuth();
-  return <AuthShell><section className="panel stack-form auth-status">
-    {auth.error ? <><p role="alert" className="alert">{auth.error}</p><button onClick={() => void auth.refresh()}>Retry sign-in check</button></> : <p role="status" aria-live="polite">Loading…</p>}
-  </section></AuthShell>;
+  return <AuthShell>
+    {auth.error ? <section className="panel stack-form auth-status"><p role="alert" className="alert">{auth.error}</p><button onClick={() => void auth.refresh()}>Retry sign-in check</button></section>
+      : auth.loading ? <LoadingState variant="session" /> : null}
+  </AuthShell>;
 }
 
 export function RequireAuth({ children }: { children: ReactNode }) {
