@@ -341,16 +341,53 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .loading-message { margin: 0; font-size: .875rem; text-align: center; }
 .travel-loading-illustration { display: block; width: 200px; max-width: 100%; height: auto; color: var(--ink); }
 .travel-ground { stroke: var(--line); }
-.travel-leg { transform-origin: 110px 78px; }
-.loading-revealed .travel-body, .loading-revealed .travel-suitcase, .loading-revealed .travel-leg, .loading-revealed .travel-ground { animation-duration: 1.6s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
-.loading-revealed .travel-body, .loading-revealed .travel-suitcase { animation-name: travel-step-lift; }
+/* Each joint rotates in its own local coordinates; lengths never change.
+   Front/left starts in contact, back/right starts half a cycle later. */
+.travel-thigh, .travel-shin, .travel-foot { transform-origin: 0 0; }
+.travel-leg-front .travel-thigh { transform: rotate(-22deg); }
+.travel-leg-back .travel-thigh { transform: rotate(22deg); }
+.travel-shin { transform: rotate(4deg); }
+.travel-leg-front .travel-foot { transform: rotate(18deg); }
+.travel-leg-back .travel-foot { transform: rotate(-26deg); }
+.loading-revealed .travel-body, .loading-revealed .travel-suitcase, .loading-revealed .travel-thigh, .loading-revealed .travel-shin, .loading-revealed .travel-foot, .loading-revealed .travel-ground { animation-duration: 1.6s; animation-iteration-count: infinite; animation-timing-function: linear; }
+.loading-revealed .travel-body, .loading-revealed .travel-suitcase { animation-name: travel-step-lift; animation-timing-function: ease-in-out; }
 .loading-revealed .travel-suitcase { animation-delay: -.4s; }
-.loading-revealed .travel-leg { animation-name: travel-walk; }
-.loading-revealed .travel-leg-back { animation-delay: -.8s; }
-.loading-revealed .travel-ground { animation-name: travel-path; animation-timing-function: linear; }
-@keyframes travel-walk { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+.loading-revealed .travel-thigh { animation-name: travel-stride; }
+.loading-revealed .travel-shin { animation-name: travel-knee; }
+.loading-revealed .travel-foot { animation-name: travel-shoe; }
+.loading-revealed .travel-leg-back .travel-thigh, .loading-revealed .travel-leg-back .travel-shin, .loading-revealed .travel-leg-back .travel-foot { animation-delay: -.8s; }
+.loading-revealed .travel-ground { animation-name: travel-path; }
+/* 0/50% contact, 25% supporting, 75% passing. The knee folds only
+   during swing (50–100%); the shoe counter-rotates to stay level. */
+@keyframes travel-stride {
+  0%, 100% { transform: rotate(-22deg); }
+  12.5% { transform: rotate(-11deg); }
+  25% { transform: rotate(0deg); }
+  37.5% { transform: rotate(11deg); }
+  50% { transform: rotate(22deg); }
+  62.5% { transform: rotate(-1deg); }
+  75% { transform: rotate(-18deg); }
+  87.5% { transform: rotate(-25deg); }
+}
+@keyframes travel-knee {
+  0%, 50%, 100% { transform: rotate(4deg); }
+  62.5% { transform: rotate(50deg); }
+  75% { transform: rotate(65deg); }
+  87.5% { transform: rotate(35deg); }
+}
+@keyframes travel-shoe {
+  0%, 100% { transform: rotate(18deg); }
+  12.5% { transform: rotate(7deg); }
+  25% { transform: rotate(-4deg); }
+  37.5% { transform: rotate(-15deg); }
+  50% { transform: rotate(-26deg); }
+  62.5% { transform: rotate(-49deg); }
+  75% { transform: rotate(-47deg); }
+  87.5% { transform: rotate(-10deg); }
+}
 @keyframes travel-step-lift { 0%, 50%, 100% { transform: translateY(0); } 25%, 75% { transform: translateY(-1px); } }
-@keyframes travel-path { to { stroke-dashoffset: 16; } }
+/* Four dash lengths move left at roughly the planted foot's speed. */
+@keyframes travel-path { to { stroke-dashoffset: 64; } }
 @media (prefers-reduced-motion: reduce) {
-  .loading-revealed .travel-body, .loading-revealed .travel-suitcase, .loading-revealed .travel-leg, .loading-revealed .travel-ground { animation: none; }
+  .loading-revealed .travel-body, .loading-revealed .travel-suitcase, .loading-revealed .travel-thigh, .loading-revealed .travel-shin, .loading-revealed .travel-foot, .loading-revealed .travel-ground { animation: none; }
 }

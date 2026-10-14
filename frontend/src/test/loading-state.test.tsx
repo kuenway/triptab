@@ -136,3 +136,15 @@ it("StrictMode leaves one pair of timers and cleans both without extra status up
   expect(document.querySelectorAll(".travel-loading-illustration")).toHaveLength(1);
   view.unmount(); expect(vi.getTimerCount()).toBe(0);
 });
+
+it("keeps two independently jointed legs in a decorative, non-focusable scene", () => {
+  render(<LoadingState variant="session" />);
+  const scene = document.querySelector("svg.travel-loading-illustration")!;
+  expect(scene.getAttribute("aria-hidden")).toBe("true");
+  expect(scene.getAttribute("focusable")).toBe("false");
+  expect(scene.querySelectorAll(".travel-leg")).toHaveLength(2);
+  for (const side of ["left", "right"]) {
+    const leg = scene.querySelector(`[data-leg="${side}"]`)!;
+    expect(leg.querySelector(".travel-thigh .travel-shin .travel-foot")).not.toBeNull();
+  }
+});
